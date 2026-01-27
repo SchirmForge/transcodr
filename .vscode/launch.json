@@ -1,0 +1,25 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Run CLI",
+      "type": "python",
+      "request": "launch",
+      "program": "${workspaceFolder}/src/cli.py",
+      "console": "integratedTerminal",
+      "justMyCode": true
+    },
+    {
+      "name": "Run API",
+      "type": "python",
+      "request": "launch",
+      "module": "uvicorn",
+      "args": [
+        "src.api:app",
+        "--reload"
+      ],
+      "console": "integratedTerminal"
+    }
+  ]
+}
+

@@ -1,0 +1,26 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Conda
+.env
+.envrc
+*.conda
+.conda/
+conda-meta/
+
+# VS Code
+.vscode/*
+!.vscode/launch.json
+
+# Logs / runtime
+logs/
+*.log
+*.sqlite
+*.db
+
+# Temp encoding files
+tmp/
+*.part
