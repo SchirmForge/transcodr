@@ -1,0 +1,30 @@
+# x265 Fast Profile
+# Faster encoding with acceptable quality
+# Good for quick conversions or testing
+
+name: x265-fast
+description: Fast x265 encoding - prioritizes speed over quality
+
+extends: base-x265
+
+video:
+  codec: libx265
+  crf: 25  # Slightly lower quality for speed
+  preset: fast  # Fast encoding
+  pix_fmt: yuv420p10le
+
+# Hardware variants
+hardware_variants:
+  vaapi:
+    video:
+      codec: hevc_vaapi
+      extra_options:
+        qp: "27"
+        compression_level: "2"  # Lower compression for speed
+      hwaccel: vaapi
+      hwaccel_device: /dev/dri/renderD128
+
+tags:
+  - fast
+  - testing
+  - vaapi

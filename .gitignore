@@ -24,3 +24,5 @@ logs/
 # Temp encoding files
 tmp/
 *.part
+
+tests/fixtures/*

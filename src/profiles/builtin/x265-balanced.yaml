@@ -1,0 +1,31 @@
+# x265 Balanced Profile
+# Good balance between quality, file size, and encoding speed
+# Recommended for most use cases
+
+name: x265-balanced
+description: Balanced x265 encoding - good quality and reasonable speed
+
+extends: base-x265
+
+video:
+  codec: libx265
+  crf: 23  # Good quality/size tradeoff
+  preset: medium  # Balanced encoding speed
+  pix_fmt: yuv420p10le
+
+# Hardware variants for AMD/Intel VAAPI
+hardware_variants:
+  vaapi:
+    video:
+      codec: hevc_vaapi
+      # VAAPI uses quality parameter instead of CRF (lower = better quality)
+      extra_options:
+        qp: "25"  # Roughly equivalent to CRF 23
+        compression_level: "4"  # Medium compression
+      hwaccel: vaapi
+      hwaccel_device: /dev/dri/renderD128
+
+tags:
+  - balanced
+  - recommended
+  - vaapi

@@ -1,0 +1,21 @@
+# Base x265 profile
+# This profile provides common x265 settings that other profiles can extend
+
+name: base-x265
+description: Base x265 encoding profile (not meant to be used directly)
+
+container: mkv
+
+video:
+  codec: libx265
+  pix_fmt: yuv420p10le  # 10-bit color depth for better quality
+
+audio:
+  copy: true  # Copy audio streams without re-encoding
+
+subtitles:
+  copy: true  # Copy subtitle streams
+
+tags:
+  - base
+  - x265

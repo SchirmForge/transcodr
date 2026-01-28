@@ -1,0 +1,30 @@
+# x265 High Quality Profile
+# Higher quality output with larger file sizes and slower encoding
+# Best for archival or important content
+
+name: x265-quality
+description: High quality x265 encoding - prioritizes quality over speed
+
+extends: base-x265
+
+video:
+  codec: libx265
+  crf: 20  # Higher quality (lower CRF)
+  preset: slow  # Better compression efficiency
+  pix_fmt: yuv420p10le
+
+# Hardware variants
+hardware_variants:
+  vaapi:
+    video:
+      codec: hevc_vaapi
+      extra_options:
+        qp: "22"  # Higher quality
+        compression_level: "6"  # Higher compression
+      hwaccel: vaapi
+      hwaccel_device: /dev/dri/renderD128
+
+tags:
+  - quality
+  - archival
+  - vaapi
