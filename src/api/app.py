@@ -355,6 +355,23 @@ async def resume_watch_folder(folder_id: str):
     return {"success": True, "message": f"Watch folder resumed: {folder_id}"}
 
 
+@app.get("/watchfolders", tags=["Watchfolders"])
+async def list_watchfolders():
+    """
+    List currently running watchfolders.
+
+    Returns watchfolders that were loaded from ~/.config/videotranscode/watchfolders/*.yaml
+    and are actively monitoring for files. Watchfolders that failed validation at startup
+    are not included.
+    """
+    global _watchfolder_service
+
+    if not _watchfolder_service:
+        return {"watchfolders": {"command": [], "media": []}}
+
+    return {"watchfolders": _watchfolder_service.get_active_watchers()}
+
+
 # =============================================================================
 # Queue Control Endpoints
 # =============================================================================

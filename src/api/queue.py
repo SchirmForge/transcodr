@@ -16,7 +16,7 @@ from .models import (
     QueueInfo,
     OutputMode,
 )
-from ..jobs import Job, JobRunner, JobState
+from ..jobs import Job, JobRunner, JobState, OutputMode
 from ..profiles.manager import ProfileManager
 
 logger = logging.getLogger(__name__)
@@ -116,9 +116,17 @@ class JobQueue:
                 priority INTEGER DEFAULT 5,
                 hardware_accel TEXT,
                 backup BOOLEAN DEFAULT 1,
-                backup_dir TEXT DEFAULT '.originals'
+                backup_dir TEXT DEFAULT '.originals',
+                output_mode TEXT DEFAULT 'replace'
             )
         """)
+
+        # Migration: add output_mode column if it doesn't exist (for existing databases)
+        try:
+            self._conn.execute("SELECT output_mode FROM jobs LIMIT 1")
+        except sqlite3.OperationalError:
+            logger.info("Migrating database: adding output_mode column")
+            self._conn.execute("ALTER TABLE jobs ADD COLUMN output_mode TEXT DEFAULT 'replace'")
 
         # Create index for efficient queries
         self._conn.execute("""
@@ -183,8 +191,8 @@ class JobQueue:
                             id, status, profile, source_path, output_path,
                             profile_index, total_profiles, parent_job_id,
                             created_at, priority, hardware_accel, backup, backup_dir,
-                            source_size_bytes
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                            source_size_bytes, output_mode
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """, (
                         job_id,
                         JobStatus.PENDING.value,
@@ -200,6 +208,7 @@ class JobQueue:
                         request.backup if request.output_mode == OutputMode.REPLACE else False,
                         request.backup_dir,
                         file_path.stat().st_size if file_path.exists() else 0,
+                        request.output_mode.value,
                     ))
                     self._conn.commit()
 
@@ -292,7 +301,7 @@ class JobQueue:
             async with self._lock:
                 cursor = self._conn.execute(
                     """SELECT id, profile, source_path, output_path, hardware_accel,
-                              profile_index, total_profiles, parent_job_id
+                              profile_index, total_profiles, parent_job_id, output_mode
                        FROM jobs WHERE id = ?""",
                     (job_id,)
                 )
@@ -307,12 +316,15 @@ class JobQueue:
             total_profiles = row["total_profiles"] or 1
             parent_job_id = row["parent_job_id"]
             output_path = Path(row["output_path"]) if row["output_path"] else None
+            output_mode_str = row["output_mode"] or "replace"
+            output_mode = OutputMode(output_mode_str)
 
             # Create Job object for runner
             job = Job(
                 source_path=Path(row["source_path"]),
                 profile_name=row["profile"],
                 hardware_accel=hardware_accel,
+                output_mode=output_mode,
             )
             job.id = job_id
             job.output_path = output_path
@@ -560,17 +572,17 @@ class JobQueue:
             profile=row["profile"],
             source_path=row["source_path"],
             output_path=row["output_path"],
-            profile_index=row["profile_index"],
-            total_profiles=row["total_profiles"],
+            profile_index=row["profile_index"] or 0,
+            total_profiles=row["total_profiles"] or 1,
             parent_job_id=row["parent_job_id"],
-            progress=row["progress"],
-            fps=row["fps"],
-            frames_processed=row["frames_processed"],
-            frames_total=row["frames_total"],
+            progress=row["progress"] or 0.0,
+            fps=row["fps"] or 0.0,
+            frames_processed=row["frames_processed"] or 0,
+            frames_total=row["frames_total"] or 0,
             created_at=datetime.fromisoformat(row["created_at"]),
             started_at=datetime.fromisoformat(row["started_at"]) if row["started_at"] else None,
             completed_at=datetime.fromisoformat(row["completed_at"]) if row["completed_at"] else None,
-            source_size_bytes=row["source_size_bytes"],
-            output_size_bytes=row["output_size_bytes"],
+            source_size_bytes=row["source_size_bytes"] or 0,
+            output_size_bytes=row["output_size_bytes"] or 0,
             error_message=row["error_message"],
         )

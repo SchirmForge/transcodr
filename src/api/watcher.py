@@ -775,8 +775,6 @@ class MediaFileWatcher:
                 logger.debug(f"Media watcher: cleaned up temp source {submitted.temp_source.name}")
             except Exception as e:
                 logger.warning(f"Media watcher: failed to cleanup temp source: {e}")
-        except Exception as e:
-            logger.warning(f"Media watcher: failed to handle source file {file_path.name}: {e}")
 
 
 class WatchfolderService:

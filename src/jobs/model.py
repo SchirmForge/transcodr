@@ -21,6 +21,13 @@ class JobState(str, Enum):
     CANCELLED = "cancelled"
 
 
+class OutputMode(str, Enum):
+    """Output handling mode."""
+
+    REPLACE = "replace"  # Replace original file in-place
+    DESTINATION = "destination"  # Output to destination folder
+
+
 class Job(BaseModel):
     """Encoding job."""
 
@@ -31,6 +38,7 @@ class Job(BaseModel):
     source_path: Path
     output_path: Optional[Path] = None  # Calculated during execution
     temp_path: Optional[Path] = None  # Temporary output path
+    output_mode: OutputMode = Field(default=OutputMode.REPLACE)
 
     # Profile
     profile_name: str

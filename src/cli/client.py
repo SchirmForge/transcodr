@@ -77,8 +77,12 @@ class DaemonClient:
         return self._request("POST", f"/jobs/{job_id}/retry")
 
     def list_watch_folders(self) -> dict:
-        """List watch folders."""
+        """List runtime-registered watch folders."""
         return self._request("GET", "/watch-folders")
+
+    def list_watchfolders(self) -> dict:
+        """List config-based watchfolders (from YAML files)."""
+        return self._request("GET", "/watchfolders")
 
     def remove_watch_folder(self, folder_id: str) -> dict:
         """Remove a watch folder."""
@@ -275,28 +279,34 @@ def cmd_retry(args):
 
 
 def cmd_watch(args):
-    """List watch folders."""
+    """List watchfolders."""
     client = get_client()
-    result = client.list_watch_folders()
 
-    folders = result['watch_folders']
+    # Get config-based watchfolders (from YAML files)
+    result = client.list_watchfolders()
+    watchfolders = result.get('watchfolders', {})
 
-    if not folders:
-        print("No watch folders registered")
+    command_watchers = watchfolders.get('command', [])
+    media_watchers = watchfolders.get('media', [])
+
+    if not command_watchers and not media_watchers:
+        print("No watchfolders running")
+        print()
+        print("Create a watchfolder config in ~/.config/videotranscode/watchfolders/")
+        print("and restart the daemon.")
         return
 
-    print(f"{'ID':<12} {'Status':<10} {'Profiles':<20} {'Path'}")
-    print("-" * 80)
+    if command_watchers:
+        print("COMMAND WATCHFOLDERS (watch for YAML command files):")
+        for path in command_watchers:
+            print(f"  {path}")
+        print()
 
-    for wf in folders:
-        wf_id = wf['id'][:10] + ".."
-        status = "Active" if wf['active'] else "Paused"
-        profiles = ", ".join(wf['profiles'])[:18]
-        if len(", ".join(wf['profiles'])) > 20:
-            profiles += ".."
-        path = wf['path']
-
-        print(f"{wf_id:<12} {status:<10} {profiles:<20} {path}")
+    if media_watchers:
+        print("MEDIA WATCHFOLDERS (watch for video files):")
+        for path in media_watchers:
+            print(f"  {path}")
+        print()
 
 
 def cmd_pause(args):

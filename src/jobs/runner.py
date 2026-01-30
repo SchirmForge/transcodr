@@ -12,7 +12,7 @@ from src.core.replace import SafeReplacer
 from src.core.hardware import HardwareCapabilities
 from src.core.errors import ValidationError, EncodingError, ReplacementError
 from src.profiles.manager import ProfileManager
-from .model import Job, JobState
+from .model import Job, JobState, OutputMode
 
 logger = logging.getLogger(__name__)
 
@@ -167,11 +167,14 @@ class JobRunner:
             if progress_callback:
                 progress_callback(job)
 
-            if profile_index == 0:
-                # First profile: replace original file
+            if job.output_mode == OutputMode.DESTINATION:
+                # Destination mode: always copy to output path, never replace
+                self._copy_to_output(job)
+            elif profile_index == 0:
+                # Replace mode, first profile: replace original file
                 self._replace_file(job)
             else:
-                # Subsequent profiles: copy to output path (already set with profile suffix)
+                # Replace mode, subsequent profiles: copy to output path (with profile suffix)
                 self._copy_to_output(job)
 
             # Mark completed
