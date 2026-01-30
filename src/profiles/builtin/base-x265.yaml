@@ -2,7 +2,7 @@
 # This profile provides common x265 settings that other profiles can extend
 
 name: base-x265
-description: Base x265 encoding profile (not meant to be used directly)
+description: Base x265 encoding profile with VAAPI hardware acceleration
 
 container: mkv
 
@@ -16,6 +16,17 @@ audio:
 subtitles:
   copy: true  # Copy subtitle streams
 
+# Hardware acceleration variants
+hardware_variants:
+  vaapi:
+    video:
+      codec: hevc_vaapi
+      hwaccel: vaapi
+      hwaccel_device: /dev/dri/renderD128
+      extra_options:
+        qp: "23"
+
 tags:
   - base
   - x265
+  - vaapi

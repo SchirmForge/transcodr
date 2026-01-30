@@ -1,0 +1,26 @@
+# Example: Encode entire folder to destination
+#
+# Processes all video files in source folder and outputs to destination.
+# Preserves folder structure (subdirectories recreated in destination).
+
+profiles:
+  - x265-balanced
+  - x265-mobile
+
+source: /media/downloads/movies/
+output_mode: destination
+destination: /media/encoded/movies/
+preserve_structure: yes
+recursive: yes
+
+# Only process these file types
+file_patterns:
+  - "*.mkv"
+  - "*.mp4"
+  - "*.avi"
+
+# Use VAAPI hardware acceleration
+hardware_accel: vaapi
+
+# Higher priority (1-10, default 5)
+priority: 7

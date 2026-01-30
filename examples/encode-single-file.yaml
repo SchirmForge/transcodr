@@ -1,0 +1,8 @@
+# Example: Encode a single file (replace original)
+#
+# Drop this file in the daemon's command folder or submit via API
+# The encoded file will replace the original, with backup
+
+profile: x265-balanced
+source: /media/videos/movie.mkv
+backup: yes

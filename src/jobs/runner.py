@@ -22,7 +22,12 @@ class JobRunner:
     Executes encoding jobs.
 
     Handles job validation, encoding, output validation, and file replacement.
+    Supports multi-profile encoding by using temp copies of the source file.
     """
+
+    # Class-level tracking of temp source copies for multi-profile jobs
+    _temp_source_copies: dict[str, tuple[Path, int]] = {}  # parent_id -> (temp_path, ref_count)
+    _temp_source_lock = None  # Initialized lazily
 
     def __init__(
         self,
@@ -43,17 +48,29 @@ class JobRunner:
         self.ffmpeg = ffmpeg or FFmpegWrapper()
         self.profile_manager = profile_manager or ProfileManager()
         self.probe = ProbeHelper()
-        self.replacer = SafeReplacer(backup_originals=backup_originals)
 
         self.temp_dir = temp_dir or Path(tempfile.gettempdir()) / "videotranscode"
         self.temp_dir.mkdir(parents=True, exist_ok=True)
 
+        self.replacer = SafeReplacer(
+            backup_originals=backup_originals,
+            temp_dir=self.temp_dir,
+        )
+
         self.hardware_caps = HardwareCapabilities()
+
+        # Initialize thread lock for temp source tracking
+        import threading
+        if JobRunner._temp_source_lock is None:
+            JobRunner._temp_source_lock = threading.Lock()
 
     def execute(
         self,
         job: Job,
         progress_callback: Optional[Callable[[Job], None]] = None,
+        profile_index: int = 0,
+        total_profiles: int = 1,
+        parent_job_id: Optional[str] = None,
     ) -> Job:
         """
         Execute encoding job.
@@ -61,6 +78,9 @@ class JobRunner:
         Args:
             job: Job to execute
             progress_callback: Optional callback for progress updates
+            profile_index: Index of this profile in multi-profile encoding (0-based)
+            total_profiles: Total number of profiles for this source
+            parent_job_id: Parent job ID for multi-profile grouping
 
         Returns:
             Updated job object
@@ -70,7 +90,9 @@ class JobRunner:
             EncodingError: If encoding fails
             ReplacementError: If file replacement fails
         """
-        logger.info(f"Starting job execution: {job}")
+        is_multi_profile = total_profiles > 1
+        temp_source_path: Optional[Path] = None
+        logger.info(f"Starting job execution: {job} (profile {profile_index + 1}/{total_profiles})")
 
         try:
             # Pre-flight validation
@@ -82,6 +104,17 @@ class JobRunner:
             # Setup paths
             self._setup_paths(job)
 
+            # For multi-profile encoding, get or create temp source copy
+            source_for_encoding = job.source_path
+            if is_multi_profile and parent_job_id:
+                temp_source_path = self._get_or_create_temp_source(
+                    parent_job_id,
+                    job.source_path,
+                    total_profiles,
+                )
+                source_for_encoding = temp_source_path
+                logger.info(f"Using temp source copy: {temp_source_path}")
+
             # Determine hardware acceleration
             if job.hardware_accel is None:
                 job.hardware_accel = self.hardware_caps.get_recommended_accel()
@@ -90,9 +123,9 @@ class JobRunner:
             # Load profile
             profile = self.profile_manager.load_profile(job.profile_name)
 
-            # Build FFmpeg arguments
+            # Build FFmpeg arguments (use temp source for multi-profile)
             ffmpeg_args = profile.to_ffmpeg_args(
-                str(job.source_path),
+                str(source_for_encoding),
                 str(job.temp_path),
                 hardware_accel=job.hardware_accel,
             )
@@ -101,14 +134,14 @@ class JobRunner:
             logger.info(f"FFmpeg command: ffmpeg {' '.join(ffmpeg_args)}")
 
             # Estimate total frames for progress tracking
-            job.frames_total = self.probe.estimate_frame_count(job.source_path)
+            job.frames_total = self.probe.estimate_frame_count(source_for_encoding)
 
             # Start encoding
             job.state = JobState.RUNNING
             if progress_callback:
                 progress_callback(job)
 
-            logger.info(f"Starting encoding: {job.source_path.name} → {profile.name}")
+            logger.info(f"Starting encoding: {source_for_encoding.name} → {profile.name}")
 
             def on_progress(progress: FFmpegProgress):
                 """Handle FFmpeg progress updates."""
@@ -127,13 +160,19 @@ class JobRunner:
             job.state = JobState.VALIDATING_OUTPUT
             if progress_callback:
                 progress_callback(job)
-            self._validate_output(job)
+            self._validate_output(job, source_for_encoding)
 
-            # Replace original file
+            # Handle output placement
             job.state = JobState.REPLACING
             if progress_callback:
                 progress_callback(job)
-            self._replace_file(job)
+
+            if profile_index == 0:
+                # First profile: replace original file
+                self._replace_file(job)
+            else:
+                # Subsequent profiles: copy to output path (already set with profile suffix)
+                self._copy_to_output(job)
 
             # Mark completed
             job.mark_completed()
@@ -158,6 +197,11 @@ class JobRunner:
                     logger.warning(f"Failed to cleanup temp file: {cleanup_error}")
 
             raise
+
+        finally:
+            # Release temp source copy reference (cleanup when last profile finishes)
+            if is_multi_profile and parent_job_id:
+                self._release_temp_source(parent_job_id)
 
     def _validate_job(self, job: Job):
         """
@@ -221,7 +265,7 @@ class JobRunner:
 
         logger.debug(f"Temp path: {job.temp_path}")
 
-    def _validate_output(self, job: Job):
+    def _validate_output(self, job: Job, source_for_comparison: Optional[Path] = None):
         """Validate encoded output file."""
         logger.debug("Validating encoded output")
 
@@ -247,6 +291,17 @@ class JobRunner:
         except Exception as e:
             logger.warning(f"Failed to get output metadata: {e}")
 
+        # Compare durations (use the actual source that was encoded)
+        compare_source = source_for_comparison or job.source_path
+        if not self.probe.compare_durations(compare_source, job.temp_path, tolerance_percent=1.0):
+            orig_duration = self.probe.get_duration(compare_source)
+            enc_duration = self.probe.get_duration(job.temp_path)
+            diff_percent = abs(orig_duration - enc_duration) / orig_duration * 100 if orig_duration > 0 else 100
+            raise ValidationError(
+                f"Duration mismatch: source={orig_duration:.1f}s, "
+                f"encoded={enc_duration:.1f}s (diff={diff_percent:.2f}%)"
+            )
+
         logger.debug("Output validation passed")
 
     def _replace_file(self, job: Job):
@@ -256,3 +311,83 @@ class JobRunner:
         self.replacer.replace(job.source_path, job.temp_path)
 
         logger.debug("File replacement completed")
+
+    def _copy_to_output(self, job: Job):
+        """Copy encoded file to output path (for additional profiles)."""
+        logger.debug(f"Copying encoded file to output: {job.output_path}")
+
+        if job.output_path is None:
+            raise ValidationError("Output path not set for additional profile")
+
+        # Ensure output directory exists
+        job.output_path.parent.mkdir(parents=True, exist_ok=True)
+
+        # Copy the encoded file to the output location
+        shutil.copy2(job.temp_path, job.output_path)
+        logger.info(f"Copied encoded file to: {job.output_path}")
+
+        # Cleanup temp file
+        try:
+            job.temp_path.unlink()
+            logger.debug(f"Cleaned up temp file: {job.temp_path}")
+        except Exception as e:
+            logger.warning(f"Failed to cleanup temp file: {e}")
+
+    def _get_or_create_temp_source(
+        self,
+        parent_job_id: str,
+        source_path: Path,
+        total_profiles: int,
+    ) -> Path:
+        """
+        Get or create a temp copy of the source file for multi-profile encoding.
+
+        This ensures all profiles encode from the same original source,
+        even after the first profile replaces the original file.
+
+        Args:
+            parent_job_id: Parent job ID for grouping
+            source_path: Original source file path
+            total_profiles: Total number of profiles (used for ref counting)
+
+        Returns:
+            Path to temp source copy
+        """
+        with JobRunner._temp_source_lock:
+            if parent_job_id in JobRunner._temp_source_copies:
+                # Already exists, increment ref count
+                temp_path, ref_count = JobRunner._temp_source_copies[parent_job_id]
+                JobRunner._temp_source_copies[parent_job_id] = (temp_path, ref_count + 1)
+                logger.debug(f"Reusing temp source copy: {temp_path} (refs: {ref_count + 1})")
+                return temp_path
+            else:
+                # Create new temp copy
+                temp_path = self.replacer.copy_source_to_temp(source_path)
+                JobRunner._temp_source_copies[parent_job_id] = (temp_path, 1)
+                logger.info(f"Created temp source copy: {temp_path}")
+                return temp_path
+
+    def _release_temp_source(self, parent_job_id: str):
+        """
+        Release reference to temp source copy.
+
+        When the ref count reaches zero, the temp copy is deleted.
+
+        Args:
+            parent_job_id: Parent job ID
+        """
+        with JobRunner._temp_source_lock:
+            if parent_job_id not in JobRunner._temp_source_copies:
+                return
+
+            temp_path, ref_count = JobRunner._temp_source_copies[parent_job_id]
+            ref_count -= 1
+
+            if ref_count <= 0:
+                # Last reference, cleanup temp source
+                del JobRunner._temp_source_copies[parent_job_id]
+                self.replacer.cleanup_temp_source(temp_path)
+                logger.info(f"Cleaned up temp source copy: {temp_path}")
+            else:
+                JobRunner._temp_source_copies[parent_job_id] = (temp_path, ref_count)
+                logger.debug(f"Released temp source ref: {temp_path} (refs: {ref_count})")

@@ -1,0 +1,20 @@
+# Video Transcode Requirements
+
+# Configuration and data validation
+pydantic>=2.0.0
+
+# YAML configuration files
+PyYAML>=6.0
+
+# FastAPI for REST API daemon
+fastapi>=0.100.0
+uvicorn>=0.20.0
+
+# HTTP client for CLI
+requests>=2.28.0
+
+# Database (SQLite is built-in)
+# sqlalchemy>=2.0.0  # Optional: for more advanced ORM features
+
+# File watching for hot folders (optional, using polling for now)
+# watchdog>=3.0.0

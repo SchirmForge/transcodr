@@ -3,6 +3,7 @@
 import logging
 import os
 import shutil
+import tempfile
 from pathlib import Path
 from typing import Optional
 
@@ -16,13 +17,18 @@ class SafeReplacer:
     """
     Safely replace original file with encoded file.
 
-    Provides atomic file replacement with validation and optional backup.
+    Provides:
+    - Copy source to temp directory before encoding (preserves original for multi-profile)
+    - Safe replacement: rename original -> copy new -> delete old (or backup)
+    - Validation of encoded file
+    - Optional backup of original files
     """
 
     def __init__(
         self,
         backup_originals: bool = True,
         backup_dir: Optional[Path] = None,
+        temp_dir: Optional[Path] = None,
         duration_tolerance_percent: float = 1.0,
     ):
         """
@@ -31,12 +37,38 @@ class SafeReplacer:
         Args:
             backup_originals: Create backup of original files
             backup_dir: Backup directory (None = .originals in same dir)
+            temp_dir: Temp directory for source copies and encoding (None = system temp)
             duration_tolerance_percent: Allowed duration difference percentage
         """
         self.backup_originals = backup_originals
         self.backup_dir = backup_dir
+        self.temp_dir = temp_dir or Path(tempfile.gettempdir()) / "videotranscode"
         self.duration_tolerance_percent = duration_tolerance_percent
         self.probe = ProbeHelper()
+
+        # Ensure temp directory exists
+        self.temp_dir.mkdir(parents=True, exist_ok=True)
+
+    def copy_source_to_temp(self, source: Path) -> Path:
+        """
+        Copy source file to temp directory.
+
+        This preserves the original file for multi-profile encoding where
+        multiple encodings need to be done from the same source.
+
+        Args:
+            source: Source file path
+
+        Returns:
+            Path to temp copy of source
+        """
+        temp_source = self.temp_dir / f"source_{source.name}"
+
+        logger.info(f"Copying source to temp: {source.name}")
+        shutil.copy2(source, temp_source)
+        logger.info(f"Source copied to: {temp_source}")
+
+        return temp_source
 
     def replace(
         self,
@@ -46,12 +78,14 @@ class SafeReplacer:
         """
         Safely replace original with encoded file.
 
-        Steps:
+        Process:
         1. Validate encoded file
         2. Compare durations (tolerance check)
-        3. Create backup if enabled
-        4. Atomic rename (encoded → original)
-        5. Cleanup on error (restore backup)
+        3. Rename original to .old (temporary)
+        4. Copy encoded file to original location
+        5. If backup enabled: move .old to backup location
+        6. If backup disabled: delete .old
+        7. Cleanup temp encoded file
 
         Args:
             original: Original file path
@@ -84,75 +118,102 @@ class SafeReplacer:
 
         logger.info("Encoded file validated successfully")
 
-        # 3. Create backup
-        backup_path = None
-        if self.backup_originals:
-            try:
-                backup_path = self._create_backup(original)
-                logger.info(f"Created backup: {backup_path}")
-            except Exception as e:
-                raise ReplacementError(f"Failed to create backup: {e}")
-
-        # 4. Atomic rename
+        # 3. Rename original to temporary name during replacement
+        old_path = original.with_suffix(original.suffix + ".replacing")
         try:
-            # Use os.replace for atomic operation (POSIX)
-            logger.info(f"Replacing {original.name} with encoded version")
-            os.replace(str(encoded), str(original))
-            logger.info("File replacement completed successfully")
-
+            logger.info(f"Temporarily renaming original to: {old_path.name}")
+            original.rename(old_path)
         except Exception as e:
-            # 5. Rollback on error
-            logger.error(f"Replacement failed: {e}")
+            raise ReplacementError(f"Failed to rename original: {e}")
 
-            if backup_path and backup_path.exists():
-                try:
-                    logger.warning("Rolling back: restoring original from backup")
-                    os.replace(str(backup_path), str(original))
-                    logger.info("Rollback completed")
-                except Exception as rollback_error:
-                    logger.critical(f"Rollback failed: {rollback_error}")
-                    raise ReplacementError(
-                        f"Replacement and rollback both failed. "
-                        f"Original backup at: {backup_path}"
-                    )
+        # 4. Copy encoded file to original location
+        try:
+            logger.info(f"Copying encoded file to: {original.name}")
+            shutil.copy2(encoded, original)
+            logger.info("Encoded file copied successfully")
+        except Exception as e:
+            # Rollback: restore original from .old
+            logger.error(f"Copy failed: {e}")
+            try:
+                logger.warning("Rolling back: restoring original")
+                old_path.rename(original)
+                logger.info("Rollback completed")
+            except Exception as rollback_error:
+                logger.critical(f"Rollback failed: {rollback_error}")
+                raise ReplacementError(
+                    f"Replacement and rollback both failed. "
+                    f"Original file at: {old_path}"
+                )
+            raise ReplacementError(f"Failed to copy encoded file: {e}")
 
-            raise ReplacementError(f"File replacement failed: {e}")
+        # 5. Handle .old file (backup or delete)
+        try:
+            if self.backup_originals:
+                # Move .old to backup location
+                backup_path = self._get_backup_path(original)
+                backup_path.parent.mkdir(parents=True, exist_ok=True)
+                logger.info(f"Moving original to backup: {backup_path}")
+                shutil.move(str(old_path), str(backup_path))
+                logger.info(f"Backup created: {backup_path}")
+            else:
+                # Delete .old
+                logger.info("Deleting old file (backup disabled)")
+                old_path.unlink()
+        except Exception as e:
+            # Non-fatal: replacement succeeded, just log the error
+            logger.warning(f"Failed to handle old file: {e}")
 
-    def _create_backup(self, original: Path) -> Path:
+        # 6. Cleanup temp encoded file
+        try:
+            if encoded.exists():
+                encoded.unlink()
+                logger.debug(f"Removed temp encoded file: {encoded}")
+        except Exception as e:
+            logger.warning(f"Failed to cleanup temp file: {e}")
+
+        logger.info("File replacement completed successfully")
+
+    def _get_backup_path(self, original: Path) -> Path:
         """
-        Create backup of original file.
+        Get backup path for original file.
 
         Args:
             original: Original file path
 
         Returns:
-            Path to backup file
+            Path for backup file
         """
         if self.backup_dir:
             # Use specified backup directory
             backup_dir = self.backup_dir
+            return backup_dir / f"{original.name}.backup"
         else:
-            # Use .originals subdirectory next to original
-            backup_dir = original.parent / ".originals"
+            # Keep backup in same directory with .backup suffix
+            # e.g., video.mkv -> video.mkv.backup
+            return original.with_suffix(original.suffix + ".backup")
 
-        # Create backup directory
-        backup_dir.mkdir(parents=True, exist_ok=True)
-
-        # Backup filename: original_name.backup.ext
-        backup_path = backup_dir / f"{original.stem}.backup{original.suffix}"
-
-        # Copy file (preserving metadata)
-        shutil.copy2(original, backup_path)
-
-        return backup_path
-
-    def cleanup_backup(self, backup_path: Path):
+    def cleanup_temp_source(self, temp_source: Path):
         """
-        Remove backup file.
+        Remove temp source copy after all encodings are complete.
 
         Args:
-            backup_path: Path to backup file
+            temp_source: Path to temp source file
         """
+        try:
+            if temp_source.exists():
+                temp_source.unlink()
+                logger.info(f"Removed temp source: {temp_source}")
+        except Exception as e:
+            logger.warning(f"Failed to remove temp source: {e}")
+
+    def cleanup_backup(self, original: Path):
+        """
+        Remove backup file for a given original.
+
+        Args:
+            original: Original file path (backup path is derived)
+        """
+        backup_path = self._get_backup_path(original)
         try:
             if backup_path.exists():
                 backup_path.unlink()

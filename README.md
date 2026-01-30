@@ -33,10 +33,10 @@ Core components implemented:
 
 ### Next Phases
 
-- **Phase 4**: API (FastAPI endpoints)
+- **Phase 4**: API (FastAPI endpoints) & daemon (basic)
 - **Phase 5**: Job queue with SQLite persistence
 - **Phase 6**: CLI (API client using Typer)
-- **Phase 7+**: Advanced features (daemon, hot folders, WebSocket progress)
+- **Phase 7+**: Advanced features (WebSocket progress, distributed encoding)
 
 ## Quick Start - Encode a Video!
 

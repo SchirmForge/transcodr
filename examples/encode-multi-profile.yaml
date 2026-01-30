@@ -1,0 +1,15 @@
+# Example: Multiple profiles (TV + Mobile versions)
+#
+# Creates multiple outputs from one source:
+#   - movie.mkv (replaced by first profile: x265-balanced)
+#   - movie_x265-mobile.mkv (second profile)
+#   - movie_x265-tv.mkv (third profile)
+
+profiles:
+  - x265-balanced    # Primary - replaces original
+  - x265-mobile      # Creates movie_x265-mobile.mkv
+  - x265-tv          # Creates movie_x265-tv.mkv
+
+source: /media/videos/movie.mkv
+output_mode: replace
+backup: yes

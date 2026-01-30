@@ -1,0 +1,35 @@
+# Example: Create a watch folder
+#
+# Registers a folder for continuous monitoring. Any video files
+# dropped in this folder will be automatically encoded.
+#
+# This is useful for:
+#   - Download folders (auto-encode completed downloads)
+#   - Recording folders (auto-encode new recordings)
+#   - Shared intake folders
+
+mode: watch
+
+profiles:
+  - x265-balanced
+  - x265-mobile
+
+# This folder will be monitored
+source: /media/watch/incoming/
+
+# Output to separate destination
+output_mode: destination
+destination: /media/encoded/
+
+# Wait 60 seconds before processing (ensures file is fully written)
+min_age_seconds: 60
+
+# Process subdirectories
+recursive: yes
+
+# File patterns to watch for
+file_patterns:
+  - "*.mkv"
+  - "*.mp4"
+  - "*.avi"
+  - "*.mov"

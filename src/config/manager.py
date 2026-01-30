@@ -1,11 +1,12 @@
 """Configuration manager for loading and saving configuration."""
 
 import logging
+import shutil
 from pathlib import Path
 from typing import Optional
 import yaml
 
-from .schema import Config
+from .schema import Config, WatchfolderConfig
 
 logger = logging.getLogger(__name__)
 
@@ -207,3 +208,166 @@ hot_folders: []
                 issues.append(f"Hot folder path does not exist: {hot_folder.path}")
 
         return issues
+
+    @staticmethod
+    def get_config_dir() -> Path:
+        """Get configuration directory path."""
+        return Path.home() / ".config" / "videotranscode"
+
+    @staticmethod
+    def get_profiles_dir() -> Path:
+        """Get user profiles directory path."""
+        return ConfigManager.get_config_dir() / "profiles"
+
+    @staticmethod
+    def get_builtin_profiles_dir() -> Path:
+        """Get built-in profiles directory path."""
+        # Assume built-in profiles are in src/profiles/builtin relative to this file
+        return Path(__file__).parent.parent / "profiles" / "builtin"
+
+    @staticmethod
+    def get_watchfolders_config_dir() -> Path:
+        """Get watchfolders configuration directory path."""
+        return ConfigManager.get_config_dir() / "watchfolders"
+
+    @staticmethod
+    def load_watchfolder_configs() -> list[WatchfolderConfig]:
+        """
+        Load all watchfolder configurations from watchfolders directory.
+
+        Returns:
+            List of WatchfolderConfig objects
+        """
+        watchfolders_dir = ConfigManager.get_watchfolders_config_dir()
+        configs = []
+
+        if not watchfolders_dir.exists():
+            return configs
+
+        for yaml_file in watchfolders_dir.glob("*.yaml"):
+            try:
+                with open(yaml_file) as f:
+                    data = yaml.safe_load(f)
+
+                if data:
+                    config = WatchfolderConfig(**data)
+                    configs.append(config)
+                    logger.info(f"Loaded watchfolder config: {yaml_file.name} -> {config.watchfolder_location}")
+            except Exception as e:
+                logger.error(f"Failed to load watchfolder config {yaml_file}: {e}")
+
+        return configs
+
+    @staticmethod
+    def ensure_config_structure() -> None:
+        """
+        Ensure configuration directory structure exists.
+
+        Creates:
+        - ~/.config/videotranscode/
+        - ~/.config/videotranscode/profiles/
+        - ~/.config/videotranscode/watchfolders/
+        """
+        config_dir = ConfigManager.get_config_dir()
+        profiles_dir = ConfigManager.get_profiles_dir()
+        watchfolders_dir = ConfigManager.get_watchfolders_config_dir()
+
+        # Create directories
+        config_dir.mkdir(parents=True, exist_ok=True)
+        profiles_dir.mkdir(parents=True, exist_ok=True)
+        watchfolders_dir.mkdir(parents=True, exist_ok=True)
+
+        logger.info(f"Configuration directory: {config_dir}")
+        logger.info(f"Profiles directory: {profiles_dir}")
+        logger.info(f"Watchfolders config directory: {watchfolders_dir}")
+
+    @staticmethod
+    def copy_builtin_profiles(overwrite: bool = False) -> list[Path]:
+        """
+        Copy built-in profiles to user profiles directory.
+
+        Args:
+            overwrite: Overwrite existing user profiles
+
+        Returns:
+            List of copied profile paths
+        """
+        builtin_dir = ConfigManager.get_builtin_profiles_dir()
+        user_dir = ConfigManager.get_profiles_dir()
+
+        if not builtin_dir.exists():
+            logger.warning(f"Built-in profiles directory not found: {builtin_dir}")
+            return []
+
+        # Ensure user profiles directory exists
+        user_dir.mkdir(parents=True, exist_ok=True)
+
+        copied_profiles = []
+
+        # Copy each built-in profile
+        for profile_file in builtin_dir.glob("*.yaml"):
+            dest_file = user_dir / profile_file.name
+
+            # Skip if exists and not overwriting
+            if dest_file.exists() and not overwrite:
+                logger.debug(f"Profile already exists, skipping: {profile_file.name}")
+                continue
+
+            # Copy profile
+            shutil.copy2(profile_file, dest_file)
+            copied_profiles.append(dest_file)
+            logger.info(f"Copied built-in profile: {profile_file.name}")
+
+        return copied_profiles
+
+    @staticmethod
+    def initialize(force_copy_profiles: bool = False) -> dict:
+        """
+        Initialize configuration directory and files.
+
+        Creates directory structure, default config, and copies built-in profiles.
+
+        Args:
+            force_copy_profiles: Force overwrite of existing user profiles
+
+        Returns:
+            Dict with initialization info:
+            {
+                'config_dir': Path,
+                'config_file': Path,
+                'profiles_dir': Path,
+                'config_created': bool,
+                'profiles_copied': list[Path]
+            }
+        """
+        config_dir = ConfigManager.get_config_dir()
+        config_file = ConfigManager.DEFAULT_CONFIG_PATH
+        profiles_dir = ConfigManager.get_profiles_dir()
+
+        # Create directory structure
+        ConfigManager.ensure_config_structure()
+
+        # Create default config if it doesn't exist
+        config_created = False
+        if not config_file.exists():
+            ConfigManager.create_default_config_file()
+            config_created = True
+            logger.info("Created default configuration file")
+        else:
+            logger.info(f"Configuration file already exists: {config_file}")
+
+        # Copy built-in profiles
+        profiles_copied = ConfigManager.copy_builtin_profiles(overwrite=force_copy_profiles)
+
+        if profiles_copied:
+            logger.info(f"Copied {len(profiles_copied)} built-in profiles")
+        else:
+            logger.info("No profiles copied (already exist or built-in profiles not found)")
+
+        return {
+            'config_dir': config_dir,
+            'config_file': config_file,
+            'profiles_dir': profiles_dir,
+            'config_created': config_created,
+            'profiles_copied': profiles_copied,
+        }
