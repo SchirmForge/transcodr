@@ -156,17 +156,21 @@ class WatchfolderConfig(BaseModel):
         default_factory=list,
         description="Encoding profiles (required for media type)"
     )
-    output_mode: str = Field(
-        default="replace",
-        description="Output mode: 'replace' or 'destination'"
-    )
     destination: Optional[Path] = Field(
         default=None,
-        description="Destination folder (required if output_mode is 'destination')"
+        description="Destination folder for encoded files (required for media type, must differ from watchfolder_location)"
     )
-    backup: bool = Field(
+    temp_folder: Optional[Path] = Field(
+        default=None,
+        description="Temporary folder for source copy during encoding (default: system temp)"
+    )
+    disable_temp_copy: bool = Field(
+        default=False,
+        description="If true, encode directly from source without copying to temp first"
+    )
+    keep_processed_files: bool = Field(
         default=True,
-        description="Backup originals before replacing"
+        description="For media type: keep source files (rename to .processed) or delete after encoding"
     )
     hardware_accel: Optional[str] = Field(
         default=None,

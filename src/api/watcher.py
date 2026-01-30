@@ -416,6 +416,16 @@ class CommandFileWatcher:
         error_file.write_text("\n".join(errors))
 
 
+@dataclass
+class SubmittedJob:
+    """Tracks a submitted job for a source file."""
+    original_path: Path          # Original file path (before renaming)
+    processing_path: Path        # Path while processing (.processing suffix)
+    temp_source: Optional[Path]  # Temp copy of source (if temp copy enabled)
+    job_ids: list[str]
+    submitted_at: float
+
+
 class MediaFileWatcher:
     """
     Watches a directory for media files (video/audio).
@@ -423,6 +433,8 @@ class MediaFileWatcher:
     Uses file size stability detection: a file is ready when its size
     hasn't changed for a configurable number of consecutive scans.
     Encoding settings come from the watchfolder configuration.
+
+    Source files are only renamed/deleted AFTER all jobs complete successfully.
     """
 
     def __init__(self, config, job_queue: JobQueue):
@@ -440,7 +452,8 @@ class MediaFileWatcher:
         self._running = False
         self._scan_task: Optional[asyncio.Task] = None
         self._pending_files: dict[str, PendingFile] = {}
-        self._processed_files: set[str] = set()
+        self._submitted_jobs: dict[str, SubmittedJob] = {}  # path -> submitted job info
+        self._failed_files: set[str] = set()  # Files that failed validation (won't retry)
 
     async def start(self):
         """Start watching for media files."""
@@ -480,8 +493,22 @@ class MediaFileWatcher:
         """
         path_str = str(file_path)
 
-        # Skip already processed files
-        if path_str in self._processed_files:
+        # Skip files that already have submitted jobs
+        if path_str in self._submitted_jobs:
+            return False
+
+        # Skip files that failed validation (won't retry until daemon restart)
+        if path_str in self._failed_files:
+            return False
+
+        # Skip files that have already been processed (.processed companion exists)
+        processed_path = file_path.with_suffix(file_path.suffix + ".processed")
+        if processed_path.exists():
+            return False
+
+        # Skip files currently being processed (.processing companion exists)
+        processing_path = file_path.with_suffix(file_path.suffix + ".processing")
+        if processing_path.exists():
             return False
 
         # Get current file size
@@ -521,12 +548,13 @@ class MediaFileWatcher:
         return pending.stable_count >= self.config.stability_scans
 
     async def _scan_loop(self):
-        """Scan for new media files."""
+        """Scan for new media files and check completed jobs."""
         while self._running:
             try:
                 await self._process_ready_files()
+                await self._check_completed_jobs()
             except Exception as e:
-                logger.error(f"Error scanning media files: {e}", exc_info=True)
+                logger.error(f"Error in media watcher scan loop: {e}", exc_info=True)
 
             await asyncio.sleep(self.config.scan_interval)
 
@@ -550,18 +578,68 @@ class MediaFileWatcher:
             if self._is_file_ready(file_path):
                 await self._submit_job(file_path)
 
-    async def _submit_job(self, file_path: Path):
-        """Submit encoding job for a ready file."""
-        path_str = str(file_path)
+    def _get_temp_folder(self) -> Path:
+        """Get temp folder for source copy and encoding workspace."""
+        import tempfile
+        if self.config.temp_folder:
+            temp_folder = self.config.temp_folder
+        else:
+            temp_folder = Path(tempfile.gettempdir()) / "videotranscode"
+        temp_folder.mkdir(parents=True, exist_ok=True)
+        return temp_folder
 
-        # Build encoding request from config
+    async def _submit_job(self, file_path: Path):
+        """
+        Submit encoding job for a ready file.
+
+        Workflow:
+        1. Copy source to temp folder (unless disable_temp_copy=True)
+        2. Rename source to .processing
+        3. Submit job(s) - encodes from temp, outputs to destination
+        4. (After completion) Rename .processing to .processed/.failed
+        """
+        import shutil
+        path_str = str(file_path)
+        original_path = file_path
+        processing_path = file_path.with_suffix(file_path.suffix + ".processing")
+
+        # Destination is required (validated at startup)
+        destination = self.config.destination
+        temp_folder = self._get_temp_folder()
+        temp_source: Optional[Path] = None
+
+        try:
+            # Step 1: Copy source to temp folder (if enabled)
+            if not self.config.disable_temp_copy:
+                temp_source = temp_folder / file_path.name
+                logger.info(f"Media watcher: copying {file_path.name} to temp folder")
+                shutil.copy2(file_path, temp_source)
+                source_for_encoding = temp_source
+            else:
+                # Encode directly from original (will be renamed to .processing)
+                source_for_encoding = processing_path
+
+            # Step 2: Rename source to .processing
+            logger.info(f"Media watcher: renaming {file_path.name} to {processing_path.name}")
+            file_path.rename(processing_path)
+
+        except Exception as e:
+            logger.error(f"Media watcher: failed to prepare {file_path.name}: {e}")
+            self._pending_files.pop(path_str, None)
+            self._failed_files.add(path_str)
+            # Cleanup temp if we created it
+            if temp_source and temp_source.exists():
+                temp_source.unlink()
+            return
+
+        # Step 3: Build and submit encoding request
         request = EncodingRequest(
             mode="encode",
             profiles=self.config.profiles,
-            source=path_str,
-            output_mode=self.config.output_mode,
-            destination=str(self.config.destination) if self.config.destination else None,
-            backup=self.config.backup,
+            source=str(source_for_encoding),
+            output_mode="destination",
+            destination=str(destination),
+            backup=False,  # We handle source file ourselves
             hardware_accel=self.config.hardware_accel,
             priority=self.config.priority,
         )
@@ -570,20 +648,135 @@ class MediaFileWatcher:
         issues = request.validate_request()
         if issues:
             logger.error(f"Media watcher: invalid request for {file_path.name}: {'; '.join(issues)}")
-            # Mark as processed to avoid retrying
-            self._processed_files.add(path_str)
             self._pending_files.pop(path_str, None)
+            self._failed_files.add(path_str)
+            # Rollback: rename .processing back to original
+            try:
+                processing_path.rename(original_path)
+            except Exception:
+                pass
+            # Cleanup temp
+            if temp_source and temp_source.exists():
+                temp_source.unlink()
             return
 
-        # Submit job
+        # Submit job(s)
         job_ids = await self.job_queue.submit(request)
 
         if job_ids:
-            self._processed_files.add(path_str)
+            # Track submitted jobs - source file handling happens after job completion
+            self._submitted_jobs[path_str] = SubmittedJob(
+                original_path=original_path,
+                processing_path=processing_path,
+                temp_source=temp_source,
+                job_ids=job_ids,
+                submitted_at=time.time(),
+            )
             self._pending_files.pop(path_str, None)
             logger.info(
-                f"Media watcher: submitted {len(job_ids)} job(s) for {file_path.name}"
+                f"Media watcher: submitted {len(job_ids)} job(s) for {file_path.name} "
+                f"(temp_copy={'disabled' if self.config.disable_temp_copy else 'enabled'})"
             )
+        else:
+            # Job submission failed - rollback
+            logger.error(f"Media watcher: failed to submit jobs for {file_path.name}")
+            self._pending_files.pop(path_str, None)
+            self._failed_files.add(path_str)
+            try:
+                processing_path.rename(original_path)
+            except Exception:
+                pass
+            if temp_source and temp_source.exists():
+                temp_source.unlink()
+
+    async def _check_completed_jobs(self):
+        """Check submitted jobs and handle source files when all jobs complete."""
+        from .models import JobStatus
+
+        completed_paths = []
+
+        for path_str, submitted in list(self._submitted_jobs.items()):
+            all_done = True
+            any_failed = False
+
+            for job_id in submitted.job_ids:
+                job = await self.job_queue.get_job(job_id)
+                if not job:
+                    # Job not found - treat as failed
+                    any_failed = True
+                    continue
+
+                if job.status == JobStatus.COMPLETED:
+                    continue
+                elif job.status in (JobStatus.FAILED, JobStatus.CANCELLED):
+                    any_failed = True
+                else:
+                    # Job still pending/running/queued
+                    all_done = False
+                    break
+
+            if all_done:
+                completed_paths.append(path_str)
+                # Handle source file based on outcome
+                self._handle_completed_job(submitted, failed=any_failed)
+
+        # Remove completed entries
+        for path_str in completed_paths:
+            del self._submitted_jobs[path_str]
+
+    def _handle_completed_job(self, submitted: SubmittedJob, failed: bool = False):
+        """
+        Handle completed job - rename .processing file and cleanup temp.
+
+        Args:
+            submitted: SubmittedJob with file paths
+            failed: True if any job failed/cancelled
+
+        Behavior:
+        - If any job failed: .processing -> .failed
+        - If all succeeded and keep_processed_files=True: .processing -> .processed
+        - If all succeeded and keep_processed_files=False: delete .processing file
+        - Always cleanup temp source copy
+        """
+        processing_path = submitted.processing_path
+        original_name = submitted.original_path.name
+
+        # Handle the .processing file
+        if not processing_path.exists():
+            logger.warning(f"Media watcher: .processing file no longer exists: {processing_path.name}")
+        else:
+            try:
+                if failed:
+                    # Some jobs failed - rename to .failed for easy identification
+                    # .processing -> .failed (remove .processing, add .failed)
+                    failed_path = submitted.original_path.with_suffix(
+                        submitted.original_path.suffix + ".failed"
+                    )
+                    processing_path.rename(failed_path)
+                    logger.warning(f"Media watcher: {original_name} -> {failed_path.name} (encoding failed)")
+                elif self.config.keep_processed_files:
+                    # All succeeded - rename to .processed
+                    processed_path = submitted.original_path.with_suffix(
+                        submitted.original_path.suffix + ".processed"
+                    )
+                    processing_path.rename(processed_path)
+                    logger.info(f"Media watcher: {original_name} -> {processed_path.name}")
+                else:
+                    # All succeeded - delete source file
+                    processing_path.unlink()
+                    logger.info(f"Media watcher: deleted original {original_name}")
+            except Exception as e:
+                logger.warning(f"Media watcher: failed to handle {processing_path.name}: {e}")
+
+        # Cleanup temp source copy
+        if submitted.temp_source and submitted.temp_source.exists():
+            try:
+                submitted.temp_source.unlink()
+                logger.debug(f"Media watcher: cleaned up temp source {submitted.temp_source.name}")
+            except Exception as e:
+                logger.warning(f"Media watcher: failed to cleanup temp source: {e}")
+        except Exception as e:
+            logger.warning(f"Media watcher: failed to handle source file {file_path.name}: {e}")
 
 
 class WatchfolderService:
@@ -655,6 +848,23 @@ class WatchfolderService:
             )
             return
 
+        # Validate destination is set (required to avoid infinite re-encoding)
+        if not config.destination:
+            logger.error(
+                f"Media watchfolder missing 'destination' setting: {location}. "
+                "Media watchfolders require a destination folder for encoded files. "
+                "Skipping this watchfolder."
+            )
+            return
+
+        # Validate destination differs from source (prevent infinite loop)
+        if config.destination.resolve() == location.resolve():
+            logger.error(
+                f"Media watchfolder destination cannot be the same as watchfolder_location: {location}. "
+                "This would cause infinite re-encoding. Skipping this watchfolder."
+            )
+            return
+
         if location_str in self._media_watchers:
             logger.warning(f"Media watcher already exists for: {location}")
             return
@@ -662,7 +872,7 @@ class WatchfolderService:
         watcher = MediaFileWatcher(config=config, job_queue=self.job_queue)
         await watcher.start()
         self._media_watchers[location_str] = watcher
-        logger.info(f"Started media watcher for: {location}")
+        logger.info(f"Started media watcher for: {location} -> {config.destination}")
 
     async def stop(self):
         """Stop all watchers."""
