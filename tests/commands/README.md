@@ -16,7 +16,7 @@ tests/commands/
 ## media Structure
 
 ```
-$root_media/           # Should be set in the daemon configuration
+$root_media/            # Should be set in the daemon configuration
 ├── original/           # Original source video files (DO NOT MODIFY)
 ├── replace/            # Copy files here before running replace tests
 ├── encoded/            # Target directory for destination mode

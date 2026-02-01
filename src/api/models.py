@@ -341,6 +341,32 @@ class EncodingRequest(BaseModel):
         return EncodingRequest(**data)
 
 
+def process_encoding_request(
+    request: EncodingRequest,
+    root_media: Path
+) -> tuple[EncodingRequest, list[str]]:
+    """
+    Process an encoding request: expand placeholders and validate.
+
+    This helper ensures consistent processing for both API submissions
+    and command file watcher.
+
+    Args:
+        request: The encoding request to process
+        root_media: Base path for $root_media expansion
+
+    Returns:
+        Tuple of (processed_request, validation_issues)
+    """
+    # Expand $root_media placeholders
+    request = request.expand_paths(root_media)
+
+    # Validate
+    issues = request.validate_request()
+
+    return request, issues
+
+
 # =============================================================================
 # Watch Folder Models
 # =============================================================================

@@ -11,7 +11,7 @@ from fnmatch import fnmatch
 from pathlib import Path
 from typing import Optional
 
-from .models import EncodingRequest, OutputMode, WatchFolderInfo
+from .models import EncodingRequest, OutputMode, WatchFolderInfo, process_encoding_request
 from .queue import JobQueue
 
 logger = logging.getLogger(__name__)
@@ -371,11 +371,8 @@ class CommandFileWatcher:
 
                         request = EncodingRequest(**data)
 
-                        # Expand $root_media placeholders in paths
-                        request = request.expand_paths(self.root_media)
-
-                        # Validate
-                        issues = request.validate_request()
+                        # Process request (expand $root_media, validate)
+                        request, issues = process_encoding_request(request, self.root_media)
                         if issues:
                             logger.error(
                                 f"Invalid command file {yaml_file.name}: {'; '.join(issues)}"

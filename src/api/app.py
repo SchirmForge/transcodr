@@ -20,6 +20,7 @@ from .models import (
     CancelJobResponse,
     WatchFolderInfo,
     WatchFolderListResponse,
+    process_encoding_request,
 )
 from .queue import JobQueue
 from .watcher import WatchFolderManager, WatchfolderService
@@ -184,12 +185,15 @@ async def submit_job(request: SubmitJobRequest):
     For mode='encode': Creates encoding jobs for the source files.
     For mode='watch': Registers a watch folder for continuous monitoring.
     """
-    global _job_queue, _watch_manager
+    global _job_queue, _watch_manager, _config
 
     encoding_request = request.request
 
-    # Validate request
-    issues = encoding_request.validate_request()
+    # Process request (expand $root_media, validate)
+    encoding_request, issues = process_encoding_request(
+        encoding_request,
+        _config.storage.root_media
+    )
     if issues:
         raise HTTPException(status_code=400, detail="; ".join(issues))
 
