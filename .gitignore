@@ -22,8 +22,8 @@ logs/
 *.db
 
 # Temp stuff
-tmp/*
+tmp/
 *.part
 
 # test video/audio files
-tests/media/*
+tests/media/
