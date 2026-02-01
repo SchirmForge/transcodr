@@ -1080,16 +1080,16 @@ def test_encode_workflow(sample_video):
     """
 ```
 
-### Test [media]
+### Test media
 ```
 tests/
-├── [media]/
+├── media/
 │   ├── sample-h264.mp4      # 5-second test video
 │   ├── sample-hevc.mkv
 │   └── corrupted.avi
 ├── mocks/
 │   └── ffmpeg.py            # Mock FFmpeg subprocess
-└── conftest.py              # Pytest [media]
+└── conftest.py              # Pytest media
 ```
 
 ---
@@ -1227,7 +1227,7 @@ videotranscode/
 │   ├── daemon.py               # Daemon main loop
 │   └── client.py               # Python client library (optional)
 ├── tests/
-│   ├── [media]/               # Sample media files
+│   ├── media/               # Sample media files
 │   ├── mocks/                  # Mock objects
 │   ├── unit/
 │   │   ├── test_ffmpeg.py

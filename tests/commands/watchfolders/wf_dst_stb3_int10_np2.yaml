@@ -5,9 +5,9 @@ mode: watch
 profiles:
   - x265-balanced
   - x265-fast
-source: [media]/watchfolders/incoming/
+source: watchfolders/incoming/
 output_mode: destination
-destination: [media]/encoded/watchfolder/
+destination: $root_media/encoded/watchfolder/
 min_age_seconds: 30
 recursive: false
 file_patterns:

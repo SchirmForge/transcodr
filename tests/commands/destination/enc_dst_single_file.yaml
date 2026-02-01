@@ -3,6 +3,6 @@
 
 mode: encode
 profile: x265-balanced
-source: [media]/original/test-video.mkv
+source: $root_media/original/test-video.mkv
 output_mode: destination
-destination: [media]/encoded/
+destination: $root_media/encoded/

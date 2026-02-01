@@ -1,6 +1,7 @@
 """Configuration manager for loading and saving configuration."""
 
 import logging
+import os
 import shutil
 from pathlib import Path
 from typing import Optional
@@ -9,6 +10,65 @@ import yaml
 from .schema import Config, WatchfolderConfig
 
 logger = logging.getLogger(__name__)
+
+
+def expand_path(path: Path) -> Path:
+    """
+    Expand ~ and environment variables like $USER, $HOME in a path.
+
+    Args:
+        path: Path that may contain ~ or environment variables
+
+    Returns:
+        Expanded Path object
+    """
+    return Path(os.path.expandvars(os.path.expanduser(str(path))))
+
+
+def expand_root_media_in_string(value: str, root_media_path: str) -> str:
+    """
+    Replace $root_media placeholder in a string with the actual path.
+
+    Args:
+        value: String that may contain $root_media placeholder
+        root_media_path: Expanded root_media path to substitute
+
+    Returns:
+        String with placeholder expanded
+    """
+    if "$root_media" in value:
+        # Remove trailing slash to avoid double slashes
+        root_str = root_media_path.rstrip("/")
+        return value.replace("$root_media", root_str)
+    return value
+
+
+def expand_root_media_in_config(config_data: dict) -> dict:
+    """
+    Expand $root_media placeholder in config values.
+
+    Args:
+        config_data: Raw config dictionary from YAML
+
+    Returns:
+        Config dictionary with $root_media placeholders expanded
+    """
+    # Get root_media value (with env var expansion)
+    storage = config_data.get("storage", {})
+    root_media_raw = storage.get("root_media", str(Path.home() / "Videos"))
+    root_media_expanded = os.path.expandvars(os.path.expanduser(str(root_media_raw)))
+
+    # Recursively expand $root_media in string values
+    def expand_value(value):
+        if isinstance(value, str):
+            return expand_root_media_in_string(value, root_media_expanded)
+        elif isinstance(value, dict):
+            return {k: expand_value(v) for k, v in value.items()}
+        elif isinstance(value, list):
+            return [expand_value(item) for item in value]
+        return value
+
+    return expand_value(config_data)
 
 
 class ConfigManager:
@@ -58,12 +118,33 @@ class ConfigManager:
             with open(config_path, "r") as f:
                 config_data = yaml.safe_load(f) or {}
 
+            # Expand $root_media placeholders in config values
+            config_data = expand_root_media_in_config(config_data)
+
             logger.info(f"Loaded configuration from: {config_path}")
             return Config(**config_data)
 
         except yaml.YAMLError as e:
+            # Extract line/column info if available
+            if hasattr(e, 'problem_mark') and e.problem_mark:
+                mark = e.problem_mark
+                raise ValueError(
+                    f"Invalid YAML syntax at line {mark.line + 1}, column {mark.column + 1}: {e.problem}"
+                )
             raise ValueError(f"Invalid YAML in config file: {e}")
+        except ImportError:
+            raise
         except Exception as e:
+            # Handle Pydantic validation errors with field-specific messages
+            error_name = type(e).__name__
+            if error_name == "ValidationError":
+                # Parse Pydantic validation errors for better messages
+                errors = []
+                for error in e.errors():
+                    loc = ".".join(str(x) for x in error["loc"])
+                    msg = error["msg"]
+                    errors.append(f"  - {loc}: {msg}")
+                raise ValueError(f"Configuration validation failed:\n" + "\n".join(errors))
             raise ValueError(f"Failed to load config: {e}")
 
     @staticmethod
@@ -144,6 +225,7 @@ storage:
   backup_originals: true           # Create backup of original files
   backup_dir: ./.originals         # Backup directory (relative or absolute)
   min_free_space_gb: 10            # Minimum free space required (GB)
+  root_media: ~/Videos             # Base path for $root_media placeholder (supports ~ and $USER)
 
 # Logging settings
 logging:
@@ -168,46 +250,55 @@ hot_folders: []
         return config_path
 
     @staticmethod
-    def validate_config(config: Config) -> list[str]:
+    def validate_config(config: Config) -> tuple[list[str], list[str]]:
         """
-        Validate configuration and return list of issues.
+        Validate configuration and return errors and warnings.
 
         Args:
             config: Config object to validate
 
         Returns:
-            List of validation issues (empty if valid)
+            Tuple of (errors, warnings) where:
+            - errors: Fatal issues that should prevent daemon startup
+            - warnings: Non-fatal issues the user should be aware of
         """
-        issues = []
+        errors = []
+        warnings = []
 
-        # Check temp directory is writable
+        # Check root_media folder exists (with env var expansion) - FATAL
+        if config.storage.root_media:
+            root_media = expand_path(config.storage.root_media)
+            if not root_media.exists():
+                errors.append(f"root_media folder does not exist: {root_media}")
+
+        # Check temp directory is writable - FATAL if can't create
         if not config.storage.temp_dir.exists():
             try:
                 config.storage.temp_dir.mkdir(parents=True, exist_ok=True)
             except Exception as e:
-                issues.append(f"Cannot create temp directory: {e}")
+                errors.append(f"Cannot create temp directory: {e}")
 
-        # Check port is reasonable
-        if config.daemon.port < 1024 and config.daemon.port != 0:
-            issues.append(
-                f"Port {config.daemon.port} requires root privileges. "
-                "Consider using port >= 1024"
-            )
-
-        # Check log directory if specified
+        # Check log directory if specified - FATAL if can't create
         if config.logging.dir:
             if not config.logging.dir.exists():
                 try:
                     config.logging.dir.mkdir(parents=True, exist_ok=True)
                 except Exception as e:
-                    issues.append(f"Cannot create log directory: {e}")
+                    errors.append(f"Cannot create log directory: {e}")
 
-        # Check hot folder paths exist
+        # Check hot folder paths exist - FATAL
         for hot_folder in config.hot_folders:
             if not hot_folder.path.exists():
-                issues.append(f"Hot folder path does not exist: {hot_folder.path}")
+                errors.append(f"Hot folder path does not exist: {hot_folder.path}")
 
-        return issues
+        # Check port is reasonable - WARNING only
+        if config.daemon.port < 1024 and config.daemon.port != 0:
+            warnings.append(
+                f"Port {config.daemon.port} requires root privileges. "
+                "Consider using port >= 1024"
+            )
+
+        return errors, warnings
 
     @staticmethod
     def get_config_dir() -> Path:

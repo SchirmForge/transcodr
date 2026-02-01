@@ -4,7 +4,7 @@
 
 mode: encode
 profile: x265-balanced
-source: [media]/replace/
+source: replace/
 output_mode: replace
 backup: false
 recursive: false

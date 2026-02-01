@@ -5,9 +5,9 @@ mode: encode
 profiles:
   - x265-balanced
   - x265-fast
-source: [media]/original/
+source: $root_media/original/
 output_mode: destination
-destination: [media]/encoded/
+destination: $root_media/encoded/
 append_profile_name: true
 recursive: false
 file_patterns:

@@ -298,6 +298,7 @@ class CommandFileWatcher:
         job_queue: JobQueue,
         watch_manager: WatchFolderManager,
         scan_interval: float = 5.0,
+        root_media: Optional[Path] = None,
     ):
         """
         Initialize command file watcher.
@@ -307,11 +308,13 @@ class CommandFileWatcher:
             job_queue: Job queue to submit jobs to
             watch_manager: Watch folder manager for watch requests
             scan_interval: How often to scan (seconds)
+            root_media: Base path for $root_media placeholder expansion
         """
         self.watch_path = watch_path
         self.job_queue = job_queue
         self.watch_manager = watch_manager
         self.scan_interval = scan_interval
+        self.root_media = root_media or Path.home() / "Videos"
 
         self._running = False
         self._paused = False
@@ -367,6 +370,9 @@ class CommandFileWatcher:
                             data = yaml.safe_load(f)
 
                         request = EncodingRequest(**data)
+
+                        # Expand $root_media placeholders in paths
+                        request = request.expand_paths(self.root_media)
 
                         # Validate
                         issues = request.validate_request()
@@ -808,11 +814,16 @@ class WatchfolderService:
         self.watch_manager = watch_manager
         self._command_watchers: dict[str, CommandFileWatcher] = {}
         self._media_watchers: dict[str, MediaFileWatcher] = {}
+        self._root_media: Optional[Path] = None  # Set in start()
 
     async def start(self):
         """Load watchfolder configs and start watchers."""
         from ..config.manager import ConfigManager
         from ..config.schema import WatchfolderType
+
+        # Load main config to get root_media setting
+        main_config = ConfigManager.load_config()
+        self._root_media = main_config.storage.root_media
 
         configs = ConfigManager.load_watchfolder_configs()
         logger.info(f"Loaded {len(configs)} watchfolder configuration(s)")
@@ -837,6 +848,7 @@ class WatchfolderService:
             job_queue=self.job_queue,
             watch_manager=self.watch_manager,
             scan_interval=config.scan_interval,
+            root_media=self._root_media,
         )
         await watcher.start()
         self._command_watchers[location_str] = watcher

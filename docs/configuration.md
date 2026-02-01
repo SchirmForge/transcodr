@@ -97,6 +97,7 @@ storage:
   backup_originals: true           # Create backup of original files
   backup_dir: ./.originals         # Backup directory (relative or absolute)
   min_free_space_gb: 10            # Minimum free space required (GB)
+  root_media: ~/Videos             # Base path for  placeholder (supports ~ and $USER)
 
 # Logging settings
 logging:
@@ -143,6 +144,17 @@ hot_folders: []
   - `./.originals` - Relative to source file (default)
   - `/path/to/backups` - Absolute path
 - **min_free_space_gb**: Minimum free space required to start encoding
+- **root_media**: Base path for `` placeholder
+  - Default: `~/Videos`
+  - Supports tilde expansion (`~`)
+  - Supports environment variables (`$USER`, `$HOME`)
+  - Example: `/home/$USER/media` or `/mnt/nas/videos`
+  - Can be used in config.yaml and command files:
+    ```yaml
+    storage:
+      root_media: /mnt/nas/videos
+      backup_dir: /backups    # Expands to /mnt/nas/videos/backups
+    ```
 
 #### Logging Settings
 

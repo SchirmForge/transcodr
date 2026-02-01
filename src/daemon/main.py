@@ -11,7 +11,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 import uvicorn
 
-from src.config.manager import ConfigManager
+from src.config.manager import ConfigManager, expand_path
 from src.core.logging import setup_logging
 
 
@@ -82,29 +82,101 @@ Examples:
         logger.info("Configuration not found, initializing...")
         ConfigManager.initialize()
 
-    # Load configuration
-    config = ConfigManager.load_config(args.config)
+    # Load configuration with error handling
+    config_path = args.config or ConfigManager.DEFAULT_CONFIG_PATH
+    try:
+        config = ConfigManager.load_config(args.config)
+    except ValueError as e:
+        print()
+        print("=" * 70)
+        print("CONFIGURATION ERROR")
+        print("=" * 70)
+        print()
+        print(f"  Config file: {config_path}")
+        print()
+        print(f"  Error: {e}")
+        print()
+        print("Please fix the configuration file and try again.")
+        print("=" * 70)
+        sys.exit(1)
+    except Exception as e:
+        print()
+        print("=" * 70)
+        print("CONFIGURATION ERROR")
+        print("=" * 70)
+        print()
+        print(f"  Config file: {config_path}")
+        print()
+        print(f"  Unexpected error: {type(e).__name__}: {e}")
+        print()
+        print("Please fix the configuration file and try again.")
+        print("=" * 70)
+        sys.exit(1)
 
     # Determine host and port
     host = args.host or config.daemon.host
     port = args.port or config.daemon.port
 
+    # Expand paths for display
+    root_media_expanded = expand_path(config.storage.root_media)
+    temp_dir_expanded = expand_path(config.storage.temp_dir)
+
     print("=" * 70)
     print("VIDEO TRANSCODE DAEMON")
     print("=" * 70)
     print()
-    print(f"  Host:    {host}")
-    print(f"  Port:    {port}")
-    print(f"  Workers: {args.workers}")
-    print(f"  Debug:   {args.debug}")
-    print(f"  Config:  {ConfigManager.DEFAULT_CONFIG_PATH}")
+    print("SERVER:")
+    print(f"  Host:              {host}")
+    print(f"  Port:              {port}")
+    print(f"  Workers:           {args.workers}")
+    print(f"  Debug:             {args.debug}")
     print()
-    print(f"  API Docs:    http://{host}:{port}/docs")
-    print(f"  Health:      http://{host}:{port}/health")
-    print(f"  Status:      http://{host}:{port}/status")
+    print("CONFIGURATION:")
+    print(f"  Config file:       {ConfigManager.DEFAULT_CONFIG_PATH}")
+    print(f"  Profiles dir:      {ConfigManager.get_profiles_dir()}")
+    print(f"  Watchfolders dir:  {ConfigManager.get_watchfolders_config_dir()}")
+    print()
+    print("STORAGE:")
+    print(f"  Root media:        {root_media_expanded}")
+    print(f"  Temp directory:    {temp_dir_expanded}")
+    print(f"  Backup directory:  {config.storage.backup_dir}")
+    print(f"  Backup originals:  {config.storage.backup_originals}")
+    print(f"  Min free space:    {config.storage.min_free_space_gb} GB")
+    print()
+    print("ENCODING:")
+    print(f"  Max concurrent:    {config.daemon.max_concurrent_jobs}")
+    print(f"  Hardware accel:    {config.ffmpeg.hardware_accel}")
+    print()
+    print("ENDPOINTS:")
+    print(f"  API Docs:          http://{host}:{port}/docs")
+    print(f"  Health:            http://{host}:{port}/health")
+    print(f"  Status:            http://{host}:{port}/status")
     print()
     print("=" * 70)
     print()
+
+    # Validate configuration
+    errors, warnings = ConfigManager.validate_config(config)
+
+    # Show warnings
+    if warnings:
+        print("WARNINGS:")
+        for warning in warnings:
+            print(f"  ⚠ {warning}")
+        print()
+
+    # Fail on errors
+    if errors:
+        print("=" * 70)
+        print("CONFIGURATION ERRORS")
+        print("=" * 70)
+        print()
+        for error in errors:
+            print(f"  ✗ {error}")
+        print()
+        print("Please fix the configuration and try again.")
+        print("=" * 70)
+        sys.exit(1)
 
     # Run with uvicorn
     uvicorn.run(

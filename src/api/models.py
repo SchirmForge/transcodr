@@ -1,5 +1,6 @@
 """API data models for encoding requests and job status."""
 
+import os
 from datetime import datetime
 from enum import Enum
 from pathlib import Path
@@ -301,6 +302,43 @@ class EncodingRequest(BaseModel):
             return f"{stem}{suffix}"
         else:
             return f"{stem}_{profile_name}{suffix}"
+
+    @staticmethod
+    def expand_root_media(path: str, root_media: Path) -> str:
+        """
+        Replace $root_media placeholder with actual path.
+
+        Args:
+            path: Path string that may contain $root_media placeholder
+            root_media: Base path to substitute (supports ~ and $USER)
+
+        Returns:
+            Path with placeholder expanded
+        """
+        if "$root_media" in path:
+            # Expand environment variables and ~ in root_media
+            expanded = os.path.expandvars(os.path.expanduser(str(root_media)))
+            # Normalize: remove trailing slash to avoid double slashes
+            root_str = expanded.rstrip("/")
+            return path.replace("$root_media", root_str)
+        return path
+
+    def expand_paths(self, root_media: Path) -> "EncodingRequest":
+        """
+        Return a copy of this request with $root_media placeholders expanded.
+
+        Args:
+            root_media: Base path to substitute for $root_media placeholder
+
+        Returns:
+            New EncodingRequest with expanded paths
+        """
+        data = self.model_dump()
+        if self.source:
+            data["source"] = self.expand_root_media(self.source, root_media)
+        if self.destination:
+            data["destination"] = self.expand_root_media(self.destination, root_media)
+        return EncodingRequest(**data)
 
 
 # =============================================================================

@@ -1,13 +1,13 @@
 # Destination mode, preserve structure, profile folders, 2 profiles
-# Expected: [media]/encoded/<structure>/x265-balanced/ and [media]/encoded/<structure>/x265-fast/
+# Expected: encoded/<structure>/x265-balanced/ and $ncoded/<structure>/x265-fast/
 
 mode: encode
 profiles:
   - x265-balanced
   - x265-fast
-source: [media]/original/
+source: $root_media/original/
 output_mode: destination
-destination: [media]/encoded/
+destination: $root_media/encoded/
 preserve_structure: true
 create_profile_folders: true
 recursive: true

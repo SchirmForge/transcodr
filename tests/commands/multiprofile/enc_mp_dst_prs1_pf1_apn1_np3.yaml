@@ -1,7 +1,7 @@
 # Multi-profile: destination, preserve structure, profile folders, append names, 3 profiles
 # Expected: Full organization - directory structure + profile folders + profile names
 # Output structure:
-#   [media]/encoded/multiprofile/
+#   encoded/multiprofile/
 #   ├── subdir/
 #   │   ├── x265-balanced/
 #   │   │   └── video_x265-balanced.mkv
@@ -15,9 +15,9 @@ profiles:
   - x265-balanced
   - x265-fast
   - x264-compatible
-source: [media]/original/
+source: $root_media/original/
 output_mode: destination
-destination: [media]/encoded/multiprofile/
+destination: $root_media/encoded/multiprofile/
 preserve_structure: true
 create_profile_folders: true
 append_profile_name: true

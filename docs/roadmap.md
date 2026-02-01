@@ -78,6 +78,7 @@
 ## Planned Features
 
 ### Version 0.2.1: Watch Folder Improvements
+- [x] `root_media` config placeholder for portable command files
 - [ ] Folder parsing for nested directories
 - [ ] Sub-folder detection and recursive processing
 - [ ] New file detection during encoding

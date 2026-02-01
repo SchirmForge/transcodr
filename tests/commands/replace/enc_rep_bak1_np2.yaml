@@ -5,7 +5,7 @@ mode: encode
 profiles:
   - x265-balanced
   - x265-fast
-source: [media]/replace/
+source: replace/
 output_mode: replace
 backup: true
 backup_dir: .originals

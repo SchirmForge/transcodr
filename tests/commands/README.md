@@ -13,10 +13,10 @@ tests/commands/
 └── multiprofile/       # Multi-profile encoding tests
 ```
 
-## [media] Structure
+## media Structure
 
 ```
-[media]/
+$root_media/           # Should be set in the daemon configuration
 ├── original/           # Original source video files (DO NOT MODIFY)
 ├── replace/            # Copy files here before running replace tests
 ├── encoded/            # Target directory for destination mode
@@ -72,9 +72,9 @@ The following profiles are used in tests (from built-in profiles):
 
 ## Running Tests
 
-1. Copy test files from `[media]/original/` to appropriate location:
-   - For replace tests: `[media]/replace/`
-   - For destination tests: source stays in `[media]/original/`
+1. Copy test files from `$root_media/original/` to appropriate location:
+   - For replace tests: `$root_media/replace/`
+   - For destination tests: source stays in `$root_media/original/`
 
 2. Drop command file into watchfolder or submit via API:
    ```bash

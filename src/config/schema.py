@@ -75,6 +75,10 @@ class StorageConfig(BaseModel):
         description="Minimum free space required (GB)",
         ge=1,
     )
+    root_media: Path = Field(
+        default_factory=lambda: Path.home() / "Videos",
+        description="Base path for $root_media placeholder in command files. Supports ~ and $USER.",
+    )
 
 
 class LoggingConfig(BaseModel):

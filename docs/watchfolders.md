@@ -68,11 +68,33 @@ preserve_structure: true
 recursive: true
 ```
 
+### Using $root_media Placeholder
+
+Command files can use `$root_media` as a placeholder for a base path defined in `config.yaml`:
+
+**config.yaml:**
+```yaml
+storage:
+  root_media: /mnt/nas/videos   # Or ~/Videos, /home/$USER/media
+```
+
+**Command file:**
+```yaml
+profile: x265-balanced
+source: $root_media/movies/
+output_mode: destination
+destination: $root_media/encoded/
+recursive: true
+```
+
+This makes command files portable - change `root_media` in config and all paths update.
+
 ### Use Cases
 
 - Remote job submission via file drop
 - Integration with other tools/scripts
 - Per-file encoding settings
+- Portable command files with `$root_media` placeholder
 
 ---
 

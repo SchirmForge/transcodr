@@ -6,9 +6,9 @@ profiles:
   - x265-balanced
   - x265-fast
   - x264-compatible
-source: [media]/original/
+source: $root_media/original/
 output_mode: destination
-destination: [media]/encoded/multiprofile/
+destination: $root_media/encoded/multiprofile/
 create_profile_folders: true
 recursive: false
 file_patterns:
