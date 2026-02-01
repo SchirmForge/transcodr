@@ -1,116 +1,25 @@
 # VideoTranscode Roadmap
 
+## Current Version: 0.1
+
 ## Use Cases Overview
 
 | # | Use Case | Status | Notes |
 |---|----------|--------|-------|
 | 1 | Folder encoding with replacement | ✅ Done | CLI submit, recursive, patterns |
-| 2 | Hot-folder (watch folder) | ⚠️ Partial | Monitoring works. Command file watcher pending |
-| 3 | Notifications | ❌ Pending | Desktop, webhooks, Signal/Pushover |
-| 4 | Auto hardware selection | ⚠️ Partial | VAAPI done. NVENC/QSV pending |
-| 5 | All FFmpeg codecs | ⚠️ Partial | Schema supports all. AV1/H264 profiles pending |
-| 5b | Parallel encoding | ✅ Done | max_concurrent_jobs in config |
-| 6 | Transform parameters | ❌ Pending | Filters (resize, crop, logo) |
-| 7 | Performance testing | ✅ Done | `tests/benchmark_concurrency.py` |
+| 2 | Watch folders (command type) | ✅ Done | YAML command file watcher |
+| 3 | Watch folders (media type) | ✅ Done | Direct video file detection with stability |
+| 4 | Multi-profile encoding | ✅ Done | One source -> multiple outputs |
+| 5 | Output organization | ✅ Done | Profile folders, append name, preserve structure |
+| 6 | Hardware acceleration | ✅ Done | VAAPI auto-detection and selection |
+| 7 | Parallel encoding | ✅ Done | Configurable max_concurrent_jobs |
+| 8 | Notifications | ❌ Pending | Desktop, webhooks, Signal/Pushover |
+| 9 | Video filters | ❌ Pending | Resize, crop, deinterlace, logo |
+| 10 | Distributed encoding | ❌ Pending | Multiple workers |
 
 ---
 
-## Implementation Phases
-
-### Phase 1: Complete Core Features (High Priority)
-
-| Feature | Effort | Description |
-|---------|--------|-------------|
-| Command file watcher | Medium | Drop YAML in watch folder to trigger encoding with specific settings |
-| Video filters in profiles | Medium | Add resize, crop, logo support to profile schema |
-| AV1/H264 built-in profiles | Low | Create profiles for libaom-av1, svt-av1, libx264 |
-| Configurable temp_dir | Low | Make temp directory configurable in daemon settings |
-| vtc CLI alias | Low | Create proper entry point for CLI |
-
-**Command File Watcher:**
-Enables dropping encoding command files (YAML) into watch folders:
-```yaml
-# encode-movie.yaml (dropped in /media/watch/)
-source: movie.mkv
-profiles:
-  - x265-balanced
-  - x265-mobile
-```
-
-**Video Filters in Profiles:**
-```yaml
-video:
-  codec: libx265
-  filters:
-    scale: "1920:-2"        # Resize to 1080p
-    crop: "1920:800:0:140"  # Crop to 2.39:1
-    logo:
-      file: /path/to/logo.png
-      position: "overlay=W-w-10:10"
-```
-
----
-
-### Phase 2: Monitoring & Notifications (Medium Priority)
-
-| Feature | Effort | Description |
-|---------|--------|-------------|
-| Desktop notifications | Low | D-Bus/libnotify for Linux (job complete/fail) |
-| Webhook notifications | Low | HTTP POST on events (job complete, queue empty) |
-| Pushover/Signal | Medium | Mobile push notifications |
-| Tray icon | High | System tray for status monitoring |
-
-**Architecture:**
-```
-src/notifications/
-├── __init__.py
-├── base.py          # Abstract NotificationBackend
-├── desktop.py       # D-Bus/libnotify (Linux)
-├── webhook.py       # HTTP POST to configurable URL
-└── pushover.py      # Pushover API
-```
-
-**Configuration:**
-```yaml
-notifications:
-  enabled: true
-  backends:
-    - type: desktop
-      on_complete: true
-      on_fail: true
-    - type: webhook
-      url: https://example.com/webhook
-      on_complete: true
-```
-
----
-
-### Phase 3: Tooling & DX (Low Priority)
-
-| Feature | Effort | Description |
-|---------|--------|-------------|
-| Dry-run mode | Low | Show FFmpeg command without executing |
-| Profile validation | Low | CLI command to validate profile syntax |
-| Job history/stats | Medium | Historical encoding statistics |
-| Web UI | High | Browser-based monitoring dashboard |
-
----
-
-### Phase 4: Extended Hardware Support (Deferred)
-
-| Feature | Effort | Description |
-|---------|--------|-------------|
-| NVENC detection | Medium | NVIDIA GPU hardware encoding |
-| NVENC profiles | Low | hevc_nvenc, h264_nvenc profiles |
-| Intel QSV detection | Medium | Intel Quick Sync Video |
-| QSV profiles | Low | hevc_qsv, h264_qsv profiles |
-| Portable hardware selection | Low | Auto-select based on available hardware |
-
-**Note:** VAAPI (AMD GPU) is fully working. NVENC/QSV deferred until needed.
-
----
-
-## Completed Features
+## Completed Features (v0.1)
 
 ### Core Encoding
 - [x] FFmpeg wrapper with progress streaming
@@ -118,60 +27,163 @@ notifications:
 - [x] Profile management (YAML-based, inheritance, hardware variants)
 - [x] Safe file replacement (cross-device, backup, rollback)
 - [x] Multi-profile encoding (one source -> multiple outputs)
+- [x] Output mode: replace or destination
 
 ### Daemon & API
 - [x] FastAPI REST API
 - [x] Job queue with SQLite persistence
-- [x] Watch folder monitoring
 - [x] Priority-based job ordering
 - [x] Concurrent job execution (configurable)
+- [x] Profile endpoints (list, details, delete)
+- [x] Watchfolder endpoints (unified, pause/resume)
+- [x] Configuration reload without restart
+- [x] Database purge endpoint
+
+### Watch Folders
+- [x] Command watch folders (YAML command files)
+- [x] Media watch folders (direct video detection)
+- [x] File size stability detection
+- [x] Pause/resume support
+- [x] Unified watchfolder API
+
+### Encoding Options
+- [x] `create_profile_folders` - subfolder per profile
+- [x] `append_profile_name` - profile name in filename
+- [x] `preserve_structure` - recreate folder structure
+- [x] `delete_source` - delete after successful encoding
+- [x] Configurable temp directory
 
 ### Hardware
-- [x] VAAPI detection and auto-selection (AMD GPU)
+- [x] VAAPI detection and auto-selection (AMD/Intel GPU)
 - [x] Hardware variants in profiles
 
 ### CLI
 - [x] Full CLI client for daemon API
 - [x] Profile listing with hardware info
+- [x] Job management and monitoring
+- [x] Reload and purge commands
+- [x] Delete confirmations
+
+### File Support
+- [x] Standard video: mkv, mp4, avi, mov, wmv, flv, webm
+- [x] Transport streams: m2ts, ts
 
 ### Testing & Benchmarking
-- [x] Concurrency benchmark tool (`tests/benchmark_concurrency.py`)
-- [x] Benchmark-to-profile saver (`tests/save_benchmark_to_profile.py`)
-- [x] Concurrency tuning guide (`docs/concurrency-tuning.md`)
+- [x] Concurrency benchmark tool
+- [x] Benchmark-to-profile saver
+- [x] Concurrency tuning guide
 
 ---
 
-## Future Considerations (Not Planned)
+## Planned Features
 
-| Feature | Notes |
-|---------|-------|
-| Distributed encoding | Multiple daemons sharing jobs |
-| GUI application | Native desktop app for profile/job management |
-| Web-based profile editor | Browser UI for creating/editing profiles |
-| HDR metadata preservation | Complex, codec-specific |
-| Chapter/metadata handling | Nice to have, low priority |
+### Version 0.2.1: Watch Folder Improvements
+- [ ] Folder parsing for nested directories
+- [ ] Sub-folder detection and recursive processing
+- [ ] New file detection during encoding
+
+### Version 0.2.2: Extract Profiles
+- [ ] Stream copy support (`copy: true` for video/audio)
+- [ ] Time-based extraction (`start_time`, `duration`)
+- [ ] Built-in extract profiles (3min samples at 3', 15', 30', 60', 90')
+
+### Version 0.2.3: Audio File Encoding
+- [ ] Lossless audio support (FLAC, WAV, ALAC, APE, WavPack, DSD)
+- [ ] Audio-specific encoding profiles
+
+### Version 0.2.4: Subtitles Management
+- [ ] Auto-detect external subtitle files (.srt, .ass, .ssa, .sub, .vtt)
+- [ ] Auto-embed subtitles with language detection
+- [ ] Language pattern matching (en, eng, english → eng)
+- [ ] Never burn-in subtitles (always as separate streams)
+
+### Version 0.2.5: Notifications
+- [ ] Job completion notifications
+- [ ] Batch/queue completion alerts
+- [ ] Error notifications
+- [ ] Channels: Email, Webhook, Desktop, Gotify, ntfy
+
+### Version 0.2.6: Web UI
+- [ ] Jobs activity/history views
+- [ ] Watch folder management
+- [ ] Profile management
+- [ ] Settings configuration
+- [ ] System status and logs
+
+### Version 0.2.7: Video Filters
+- [ ] Scale/resize with aspect ratio
+- [ ] Crop (black bar removal)
+- [ ] Deinterlace (yadif, bwdif)
+- [ ] Denoise, sharpen
+- [ ] Logo/watermark overlay
+- [ ] HDR to SDR tonemap
+- [ ] Filter chain generation
+
+### Version 0.3.1: Distributed Encoding
+- [ ] Controller/worker architecture
+- [ ] Worker types: local, LAN, remote
+- [ ] Job distribution strategies
+- [ ] File transfer for remote workers
+- [ ] Worker health monitoring
+
+### Future Considerations
+- HDR metadata preservation
+- Chapter/metadata handling
+- NVENC/QSV hardware support
+- Blu-ray disc support (MPLS parsing)
 
 ---
 
 ## Quick Reference
 
-### Current Commands
+### Commands
 ```bash
 # Daemon
-python -m src.daemon              # Start daemon
+python -m src.daemon
 
 # CLI
-python -m src.cli.client status   # Daemon status
-python -m src.cli.client submit   # Submit job
-python -m src.cli.client jobs     # List jobs
-python -m src.cli.client profiles # List profiles
-
-# Benchmarking
-python tests/benchmark_concurrency.py x265-balanced 8 10
-python tests/benchmark_concurrency.py x265-balanced 8 10 --source /path/to/video.mkv --cleanup
+python -m src.cli.client status
+python -m src.cli.client submit /path/to/video.mkv -p x265-balanced
+python -m src.cli.client jobs
+python -m src.cli.client profiles
+python -m src.cli.client watch
+python -m src.cli.client reload
+python -m src.cli.client purge -y
 ```
 
 ### Configuration Locations
 - Config: `~/.config/videotranscode/config.yaml`
 - Profiles: `~/.config/videotranscode/profiles/`
+- Watchfolders: `~/.config/videotranscode/watchfolders/`
 - Database: `~/.config/videotranscode/jobs.db`
+
+### API Endpoints
+- Status: `GET /status`
+- Jobs: `GET/POST /jobs`, `GET/DELETE /jobs/{id}`
+- Profiles: `GET /profiles`, `GET/DELETE /profiles/{name}`
+- Watchfolders: `GET /watchfolders`, `GET/DELETE /watchfolders/{id}`
+- Admin: `POST /reload`, `POST /purge`
+
+---
+
+## Version History
+
+### v0.3 (Planned)
+- Distributed encoding with controller/worker architecture
+
+### v0.2 (Planned)
+- Watch folder improvements (0.2.1)
+- Extract profiles (0.2.2)
+- Audio file encoding (0.2.3)
+- Subtitles management (0.2.4)
+- Notifications (0.2.5)
+- Web UI (0.2.6)
+- Video filters (0.2.7)
+
+### v0.1 (Current)
+- Core encoding pipeline with multi-profile support
+- Daemon with REST API and SQLite persistence
+- Command and media watch folders
+- Full CLI client
+- VAAPI hardware acceleration
+- Output organization options

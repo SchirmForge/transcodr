@@ -37,6 +37,7 @@ class JobQueue:
         self,
         max_concurrent: int = 1,
         db_path: Optional[Path] = None,
+        temp_dir: Optional[Path] = None,
     ):
         """
         Initialize job queue.
@@ -44,6 +45,7 @@ class JobQueue:
         Args:
             max_concurrent: Maximum concurrent encoding jobs
             db_path: Path to SQLite database (None for in-memory)
+            temp_dir: Temporary directory for encoding (None for system temp)
         """
         self.max_concurrent = max_concurrent
         self.db_path = db_path or Path(":memory:")
@@ -56,7 +58,7 @@ class JobQueue:
 
         self._conn: Optional[sqlite3.Connection] = None
         self._profile_manager = ProfileManager()
-        self._job_runner = JobRunner()
+        self._job_runner = JobRunner(temp_dir=temp_dir)
 
     async def start(self):
         """Start the job queue."""
@@ -117,7 +119,8 @@ class JobQueue:
                 hardware_accel TEXT,
                 backup BOOLEAN DEFAULT 1,
                 backup_dir TEXT DEFAULT '.originals',
-                output_mode TEXT DEFAULT 'replace'
+                output_mode TEXT DEFAULT 'replace',
+                delete_source BOOLEAN DEFAULT 0
             )
         """)
 
@@ -127,6 +130,13 @@ class JobQueue:
         except sqlite3.OperationalError:
             logger.info("Migrating database: adding output_mode column")
             self._conn.execute("ALTER TABLE jobs ADD COLUMN output_mode TEXT DEFAULT 'replace'")
+
+        # Migration: add delete_source column if it doesn't exist
+        try:
+            self._conn.execute("SELECT delete_source FROM jobs LIMIT 1")
+        except sqlite3.OperationalError:
+            logger.info("Migrating database: adding delete_source column")
+            self._conn.execute("ALTER TABLE jobs ADD COLUMN delete_source BOOLEAN DEFAULT 0")
 
         # Create index for efficient queries
         self._conn.execute("""
@@ -191,8 +201,8 @@ class JobQueue:
                             id, status, profile, source_path, output_path,
                             profile_index, total_profiles, parent_job_id,
                             created_at, priority, hardware_accel, backup, backup_dir,
-                            source_size_bytes, output_mode
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                            source_size_bytes, output_mode, delete_source
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """, (
                         job_id,
                         JobStatus.PENDING.value,
@@ -209,6 +219,7 @@ class JobQueue:
                         request.backup_dir,
                         file_path.stat().st_size if file_path.exists() else 0,
                         request.output_mode.value,
+                        request.delete_source,
                     ))
                     self._conn.commit()
 
@@ -237,15 +248,19 @@ class JobQueue:
 
             dest_base = Path(request.destination)
 
+            # Preserve folder structure if requested
             if request.preserve_structure:
-                # Preserve folder structure
                 try:
                     relative = source_file.parent.relative_to(Path(request.source))
-                    return dest_base / relative / output_filename
+                    dest_base = dest_base / relative
                 except ValueError:
-                    return dest_base / output_filename
-            else:
-                return dest_base / output_filename
+                    pass
+
+            # Create profile subfolder if requested
+            if request.create_profile_folders:
+                dest_base = dest_base / profile_name
+
+            return dest_base / output_filename
 
     async def _process_jobs(self):
         """Background task to process pending jobs."""
@@ -301,7 +316,8 @@ class JobQueue:
             async with self._lock:
                 cursor = self._conn.execute(
                     """SELECT id, profile, source_path, output_path, hardware_accel,
-                              profile_index, total_profiles, parent_job_id, output_mode
+                              profile_index, total_profiles, parent_job_id, output_mode,
+                              delete_source
                        FROM jobs WHERE id = ?""",
                     (job_id,)
                 )
@@ -318,6 +334,7 @@ class JobQueue:
             output_path = Path(row["output_path"]) if row["output_path"] else None
             output_mode_str = row["output_mode"] or "replace"
             output_mode = OutputMode(output_mode_str)
+            delete_source = bool(row["delete_source"]) if row["delete_source"] is not None else False
 
             # Create Job object for runner
             job = Job(
@@ -325,6 +342,7 @@ class JobQueue:
                 profile_name=row["profile"],
                 hardware_accel=hardware_accel,
                 output_mode=output_mode,
+                delete_source=delete_source,
             )
             job.id = job_id
             job.output_path = output_path
@@ -563,6 +581,38 @@ class JobQueue:
             )
             self._conn.commit()
             return cursor.rowcount
+
+    async def purge_all(self, force: bool = False) -> int:
+        """
+        Purge all jobs from the database.
+
+        Args:
+            force: If True, also cancel and remove running/pending jobs
+
+        Returns:
+            Number of jobs purged
+        """
+        async with self._lock:
+            if force:
+                # Cancel all active jobs first
+                for job_id, task in list(self._active_jobs.items()):
+                    task.cancel()
+                    logger.info(f"Cancelled active job during purge: {job_id}")
+                self._active_jobs.clear()
+
+                # Delete all jobs
+                cursor = self._conn.execute("DELETE FROM jobs")
+            else:
+                # Only delete non-active jobs (completed, failed, cancelled)
+                cursor = self._conn.execute(
+                    "DELETE FROM jobs WHERE status NOT IN (?, ?)",
+                    (JobStatus.PENDING.value, JobStatus.RUNNING.value)
+                )
+
+            self._conn.commit()
+            count = cursor.rowcount
+            logger.info(f"Purged {count} jobs from database (force={force})")
+            return count
 
     def _row_to_job_info(self, row: sqlite3.Row) -> JobInfo:
         """Convert database row to JobInfo."""

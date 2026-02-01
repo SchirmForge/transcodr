@@ -314,6 +314,7 @@ class CommandFileWatcher:
         self.scan_interval = scan_interval
 
         self._running = False
+        self._paused = False
         self._scan_task: Optional[asyncio.Task] = None
         self._processed_files: set[str] = set()
 
@@ -343,6 +344,11 @@ class CommandFileWatcher:
 
         while self._running:
             try:
+                # Skip if paused
+                if self._paused:
+                    await asyncio.sleep(self.scan_interval)
+                    continue
+
                 for yaml_file in self.watch_path.glob("*.yaml"):
                     if str(yaml_file) in self._processed_files:
                         continue
@@ -450,6 +456,7 @@ class MediaFileWatcher:
         self.watch_path = config.watchfolder_location
 
         self._running = False
+        self._paused = False
         self._scan_task: Optional[asyncio.Task] = None
         self._pending_files: dict[str, PendingFile] = {}
         self._submitted_jobs: dict[str, SubmittedJob] = {}  # path -> submitted job info
@@ -551,7 +558,9 @@ class MediaFileWatcher:
         """Scan for new media files and check completed jobs."""
         while self._running:
             try:
-                await self._process_ready_files()
+                # Skip processing if paused, but still check completed jobs
+                if not self._paused:
+                    await self._process_ready_files()
                 await self._check_completed_jobs()
             except Exception as e:
                 logger.error(f"Error in media watcher scan loop: {e}", exc_info=True)
@@ -882,9 +891,95 @@ class WatchfolderService:
             await watcher.stop()
         self._media_watchers.clear()
 
-    def get_active_watchers(self) -> dict[str, list[str]]:
-        """Get dict of active watchfolder locations by type."""
+    def get_active_watchers(self) -> dict[str, list[dict]]:
+        """Get dict of active watchfolder info by type."""
+        command_list = []
+        for path, watcher in self._command_watchers.items():
+            command_list.append({
+                "id": path,
+                "path": path,
+                "scan_interval": watcher.scan_interval,
+                "active": watcher._running,
+                "paused": getattr(watcher, '_paused', False),
+            })
+
+        media_list = []
+        for path, watcher in self._media_watchers.items():
+            media_list.append({
+                "id": path,
+                "path": path,
+                "profiles": watcher.config.profiles,
+                "destination": str(watcher.config.destination),
+                "scan_interval": watcher.config.scan_interval,
+                "file_patterns": watcher.config.file_patterns,
+                "active": watcher._running,
+                "paused": getattr(watcher, '_paused', False),
+                "pending_files": len(watcher._pending_files),
+                "submitted_jobs": len(watcher._submitted_jobs),
+            })
+
         return {
-            "command": list(self._command_watchers.keys()),
-            "media": list(self._media_watchers.keys()),
+            "command": command_list,
+            "media": media_list,
         }
+
+    def get_watcher(self, folder_id: str) -> Optional[dict]:
+        """Get a specific watcher by ID (path)."""
+        # Check command watchers
+        if folder_id in self._command_watchers:
+            watcher = self._command_watchers[folder_id]
+            return {
+                "id": folder_id,
+                "path": folder_id,
+                "type": "command",
+                "scan_interval": watcher.scan_interval,
+                "active": watcher._running,
+                "paused": getattr(watcher, '_paused', False),
+            }
+
+        # Check media watchers
+        if folder_id in self._media_watchers:
+            watcher = self._media_watchers[folder_id]
+            return {
+                "id": folder_id,
+                "path": folder_id,
+                "type": "media",
+                "profiles": watcher.config.profiles,
+                "destination": str(watcher.config.destination),
+                "scan_interval": watcher.config.scan_interval,
+                "file_patterns": watcher.config.file_patterns,
+                "active": watcher._running,
+                "paused": getattr(watcher, '_paused', False),
+                "pending_files": len(watcher._pending_files),
+                "submitted_jobs": len(watcher._submitted_jobs),
+            }
+
+        return None
+
+    def pause_watcher(self, folder_id: str) -> bool:
+        """Pause a watcher by ID."""
+        if folder_id in self._command_watchers:
+            self._command_watchers[folder_id]._paused = True
+            logger.info(f"Paused command watcher: {folder_id}")
+            return True
+
+        if folder_id in self._media_watchers:
+            self._media_watchers[folder_id]._paused = True
+            logger.info(f"Paused media watcher: {folder_id}")
+            return True
+
+        return False
+
+    def resume_watcher(self, folder_id: str) -> bool:
+        """Resume a paused watcher by ID."""
+        if folder_id in self._command_watchers:
+            self._command_watchers[folder_id]._paused = False
+            logger.info(f"Resumed command watcher: {folder_id}")
+            return True
+
+        if folder_id in self._media_watchers:
+            self._media_watchers[folder_id]._paused = False
+            logger.info(f"Resumed media watcher: {folder_id}")
+            return True
+
+        return False

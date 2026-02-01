@@ -25,6 +25,7 @@ from .queue import JobQueue
 from .watcher import WatchFolderManager, WatchfolderService
 from ..config.manager import ConfigManager
 from ..core.hardware import HardwareCapabilities
+from ..profiles.manager import ProfileManager
 
 logger = logging.getLogger(__name__)
 
@@ -57,9 +58,10 @@ async def lifespan(app: FastAPI):
     _job_queue = JobQueue(
         max_concurrent=_config.daemon.max_concurrent_jobs,
         db_path=_config.get_jobs_db_path(),
+        temp_dir=_config.storage.temp_dir,
     )
     await _job_queue.start()
-    logger.info(f"Job queue started (max concurrent: {_config.daemon.max_concurrent_jobs})")
+    logger.info(f"Job queue started (max concurrent: {_config.daemon.max_concurrent_jobs}, temp: {_config.storage.temp_dir})")
 
     # Initialize watch folder manager
     _watch_manager = WatchFolderManager(_job_queue)
@@ -283,93 +285,135 @@ async def retry_job(job_id: str):
 # Watch Folder Endpoints
 # =============================================================================
 
-@app.get("/watch-folders", response_model=WatchFolderListResponse, tags=["Watch Folders"])
-async def list_watch_folders():
-    """List all registered watch folders."""
-    global _watch_manager
-
-    if not _watch_manager:
-        raise HTTPException(status_code=500, detail="Watch manager not initialized")
-
-    folders = await _watch_manager.list_folders()
-    return WatchFolderListResponse(watch_folders=folders, total=len(folders))
-
-
-@app.get("/watch-folders/{folder_id}", response_model=WatchFolderInfo, tags=["Watch Folders"])
-async def get_watch_folder(folder_id: str):
-    """Get watch folder details."""
-    global _watch_manager
-
-    if not _watch_manager:
-        raise HTTPException(status_code=500, detail="Watch manager not initialized")
-
-    folder = await _watch_manager.get_folder(folder_id)
-    if not folder:
-        raise HTTPException(status_code=404, detail=f"Watch folder not found: {folder_id}")
-
-    return folder
-
-
-@app.delete("/watch-folders/{folder_id}", tags=["Watch Folders"])
-async def remove_watch_folder(folder_id: str):
-    """Remove a watch folder."""
-    global _watch_manager
-
-    if not _watch_manager:
-        raise HTTPException(status_code=500, detail="Watch manager not initialized")
-
-    success = await _watch_manager.unregister(folder_id)
-    if not success:
-        raise HTTPException(status_code=404, detail=f"Watch folder not found: {folder_id}")
-
-    return {"success": True, "message": f"Watch folder removed: {folder_id}"}
-
-
-@app.post("/watch-folders/{folder_id}/pause", tags=["Watch Folders"])
-async def pause_watch_folder(folder_id: str):
-    """Pause a watch folder."""
-    global _watch_manager
-
-    if not _watch_manager:
-        raise HTTPException(status_code=500, detail="Watch manager not initialized")
-
-    success = await _watch_manager.pause(folder_id)
-    if not success:
-        raise HTTPException(status_code=404, detail=f"Watch folder not found: {folder_id}")
-
-    return {"success": True, "message": f"Watch folder paused: {folder_id}"}
-
-
-@app.post("/watch-folders/{folder_id}/resume", tags=["Watch Folders"])
-async def resume_watch_folder(folder_id: str):
-    """Resume a paused watch folder."""
-    global _watch_manager
-
-    if not _watch_manager:
-        raise HTTPException(status_code=500, detail="Watch manager not initialized")
-
-    success = await _watch_manager.resume(folder_id)
-    if not success:
-        raise HTTPException(status_code=404, detail=f"Watch folder not found: {folder_id}")
-
-    return {"success": True, "message": f"Watch folder resumed: {folder_id}"}
-
-
 @app.get("/watchfolders", tags=["Watchfolders"])
 async def list_watchfolders():
     """
-    List currently running watchfolders.
+    List all watchfolders (both config-based and API-registered).
 
-    Returns watchfolders that were loaded from ~/.config/videotranscode/watchfolders/*.yaml
-    and are actively monitoring for files. Watchfolders that failed validation at startup
-    are not included.
+    Returns watchfolders with their source indicated:
+    - source: "config" - Loaded from ~/.config/videotranscode/watchfolders/*.yaml
+    - source: "api" - Registered via API at runtime
     """
-    global _watchfolder_service
+    global _watchfolder_service, _watch_manager
 
-    if not _watchfolder_service:
-        return {"watchfolders": {"command": [], "media": []}}
+    result = {
+        "watchfolders": [],
+        "total": 0,
+    }
 
-    return {"watchfolders": _watchfolder_service.get_active_watchers()}
+    # Get config-based watchfolders
+    if _watchfolder_service:
+        config_watchers = _watchfolder_service.get_active_watchers()
+        for watcher in config_watchers.get("command", []):
+            watcher["source"] = "config"
+            watcher["type"] = "command"
+            result["watchfolders"].append(watcher)
+        for watcher in config_watchers.get("media", []):
+            watcher["source"] = "config"
+            watcher["type"] = "media"
+            result["watchfolders"].append(watcher)
+
+    # Get API-registered watchfolders
+    if _watch_manager:
+        api_folders = await _watch_manager.list_folders()
+        for folder in api_folders:
+            folder_dict = folder.model_dump()
+            folder_dict["source"] = "api"
+            folder_dict["type"] = "command"
+            result["watchfolders"].append(folder_dict)
+
+    result["total"] = len(result["watchfolders"])
+    return result
+
+
+@app.get("/watchfolders/{folder_id}", tags=["Watchfolders"])
+async def get_watchfolder(folder_id: str):
+    """Get watchfolder details by ID."""
+    global _watchfolder_service, _watch_manager
+
+    # Check config-based watchfolders first
+    if _watchfolder_service:
+        watcher = _watchfolder_service.get_watcher(folder_id)
+        if watcher:
+            watcher["source"] = "config"
+            return watcher
+
+    # Check API-registered watchfolders
+    if _watch_manager:
+        folder = await _watch_manager.get_folder(folder_id)
+        if folder:
+            folder_dict = folder.model_dump()
+            folder_dict["source"] = "api"
+            return folder_dict
+
+    raise HTTPException(status_code=404, detail=f"Watchfolder not found: {folder_id}")
+
+
+@app.delete("/watchfolders/{folder_id}", tags=["Watchfolders"])
+async def remove_watchfolder(folder_id: str):
+    """
+    Remove a watchfolder.
+
+    Note: Config-based watchfolders cannot be removed via API (delete the YAML file instead).
+    """
+    global _watchfolder_service, _watch_manager
+
+    # Check if it's a config-based watchfolder
+    if _watchfolder_service:
+        watcher = _watchfolder_service.get_watcher(folder_id)
+        if watcher:
+            raise HTTPException(
+                status_code=400,
+                detail="Cannot remove config-based watchfolder via API. Delete the YAML file instead."
+            )
+
+    # Try to remove API-registered watchfolder
+    if _watch_manager:
+        success = await _watch_manager.unregister(folder_id)
+        if success:
+            return {"success": True, "message": f"Watchfolder removed: {folder_id}"}
+
+    raise HTTPException(status_code=404, detail=f"Watchfolder not found: {folder_id}")
+
+
+@app.post("/watchfolders/{folder_id}/pause", tags=["Watchfolders"])
+async def pause_watchfolder(folder_id: str):
+    """Pause a watchfolder."""
+    global _watchfolder_service, _watch_manager
+
+    # Check config-based watchfolders
+    if _watchfolder_service:
+        success = _watchfolder_service.pause_watcher(folder_id)
+        if success:
+            return {"success": True, "message": f"Watchfolder paused: {folder_id}"}
+
+    # Check API-registered watchfolders
+    if _watch_manager:
+        success = await _watch_manager.pause(folder_id)
+        if success:
+            return {"success": True, "message": f"Watchfolder paused: {folder_id}"}
+
+    raise HTTPException(status_code=404, detail=f"Watchfolder not found: {folder_id}")
+
+
+@app.post("/watchfolders/{folder_id}/resume", tags=["Watchfolders"])
+async def resume_watchfolder(folder_id: str):
+    """Resume a paused watchfolder."""
+    global _watchfolder_service, _watch_manager
+
+    # Check config-based watchfolders
+    if _watchfolder_service:
+        success = _watchfolder_service.resume_watcher(folder_id)
+        if success:
+            return {"success": True, "message": f"Watchfolder resumed: {folder_id}"}
+
+    # Check API-registered watchfolders
+    if _watch_manager:
+        success = await _watch_manager.resume(folder_id)
+        if success:
+            return {"success": True, "message": f"Watchfolder resumed: {folder_id}"}
+
+    raise HTTPException(status_code=404, detail=f"Watchfolder not found: {folder_id}")
 
 
 # =============================================================================
@@ -422,3 +466,146 @@ async def clear_failed_jobs():
 
     count = await _job_queue.clear_failed()
     return {"success": True, "message": f"Cleared {count} failed jobs"}
+
+
+# =============================================================================
+# Admin Endpoints
+# =============================================================================
+
+@app.post("/reload", tags=["Admin"])
+async def reload_config():
+    """
+    Reload configuration and watchfolders without restarting the daemon.
+
+    This will:
+    - Reload the main config file
+    - Stop all current watchfolders
+    - Reload and start watchfolders from config files
+    """
+    global _config, _watchfolder_service, _watch_manager
+
+    try:
+        # Reload main config
+        _config = ConfigManager.load_config()
+        logger.info(f"Configuration reloaded from: {ConfigManager.DEFAULT_CONFIG_PATH}")
+
+        # Restart watchfolder service
+        if _watchfolder_service:
+            await _watchfolder_service.stop()
+            await _watchfolder_service.start()
+            logger.info("Watchfolder service reloaded")
+
+        return {
+            "success": True,
+            "message": "Configuration reloaded successfully",
+            "config_path": str(ConfigManager.DEFAULT_CONFIG_PATH),
+        }
+    except Exception as e:
+        logger.error(f"Failed to reload configuration: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to reload configuration: {e}")
+
+
+@app.post("/purge", tags=["Admin"])
+async def purge_database(
+    force: bool = Query(False, description="Force purge even if jobs are in progress"),
+    confirm: bool = Query(False, description="Confirm the purge operation"),
+):
+    """
+    Purge all jobs from the database (clear history).
+
+    Requires confirm=true query parameter.
+    Will fail if jobs are running/pending unless force=true.
+    """
+    global _job_queue
+
+    if not _job_queue:
+        raise HTTPException(status_code=500, detail="Job queue not initialized")
+
+    if not confirm:
+        raise HTTPException(
+            status_code=400,
+            detail="Purge requires confirmation. Add ?confirm=true to proceed."
+        )
+
+    # Check for active jobs
+    queue_info = await _job_queue.get_queue_info()
+    active_jobs = queue_info.running_jobs + queue_info.pending_jobs
+
+    if active_jobs > 0 and not force:
+        raise HTTPException(
+            status_code=409,
+            detail=f"Cannot purge: {active_jobs} job(s) in progress. Use force=true to override."
+        )
+
+    # Purge all jobs
+    count = await _job_queue.purge_all(force=force)
+
+    return {
+        "success": True,
+        "message": f"Purged {count} job(s) from database",
+        "jobs_purged": count,
+    }
+
+
+# =============================================================================
+# Profile Endpoints
+# =============================================================================
+
+@app.get("/profiles", tags=["Profiles"])
+async def list_profiles():
+    """List all available encoding profiles."""
+    pm = ProfileManager()
+    profiles = pm.list_profiles()
+
+    result = []
+    for name in profiles:
+        info = pm.get_profile_info(name)
+        # Add source indicator (builtin vs user)
+        profile_file = pm._find_profile_file(name)
+        info["source"] = "builtin" if profile_file and "builtin" in str(profile_file) else "user"
+        result.append(info)
+
+    return {"profiles": result, "total": len(result)}
+
+
+@app.get("/profiles/{name}", tags=["Profiles"])
+async def get_profile(name: str):
+    """Get profile details."""
+    pm = ProfileManager()
+    if not pm.profile_exists(name):
+        raise HTTPException(status_code=404, detail=f"Profile not found: {name}")
+
+    info = pm.get_profile_info(name)
+    profile_file = pm._find_profile_file(name)
+    info["source"] = "builtin" if profile_file and "builtin" in str(profile_file) else "user"
+    return info
+
+
+@app.delete("/profiles/{name}", tags=["Profiles"])
+async def delete_profile(
+    name: str,
+    confirm: bool = Query(False, description="Confirm the delete operation"),
+):
+    """
+    Delete a user profile.
+
+    Cannot delete built-in profiles.
+    Requires confirm=true query parameter.
+    """
+    pm = ProfileManager()
+    if not pm.profile_exists(name):
+        raise HTTPException(status_code=404, detail=f"Profile not found: {name}")
+
+    profile_file = pm._find_profile_file(name)
+    if profile_file and "builtin" in str(profile_file):
+        raise HTTPException(status_code=400, detail="Cannot delete built-in profiles")
+
+    if not confirm:
+        raise HTTPException(
+            status_code=400,
+            detail="Delete requires confirmation. Add ?confirm=true to proceed."
+        )
+
+    profile_file.unlink()
+    pm.clear_cache()
+    return {"success": True, "message": f"Profile deleted: {name}"}

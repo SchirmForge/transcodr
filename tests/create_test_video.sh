@@ -3,14 +3,14 @@
 
 set -e
 
-OUTPUT_FILE="${1:-tests/fixtures/test_video.mp4}"
+OUTPUT_FILE="${1:-tests/[media]/test_video.mp4}"
 DURATION="${2:-10}"
 
 echo "Creating test video..."
 echo "Output: $OUTPUT_FILE"
 echo "Duration: ${DURATION}s"
 
-# Create fixtures directory if needed
+# Create [media] directory if needed
 mkdir -p "$(dirname "$OUTPUT_FILE")"
 
 # Generate test video with FFmpeg

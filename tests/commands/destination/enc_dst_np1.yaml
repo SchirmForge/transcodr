@@ -1,0 +1,12 @@
+# Destination mode, single profile
+# Expected: Output to [media]/encoded/, source unchanged
+
+mode: encode
+profile: x265-balanced
+source: [media]/original/
+output_mode: destination
+destination: [media]/encoded/
+recursive: false
+file_patterns:
+  - "*.mkv"
+  - "*.mp4"

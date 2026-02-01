@@ -1,0 +1,16 @@
+# Multi-profile: destination, profile folders, 3 profiles
+# Expected: Each profile output in its own subfolder
+
+mode: encode
+profiles:
+  - x265-balanced
+  - x265-fast
+  - x264-compatible
+source: [media]/original/
+output_mode: destination
+destination: [media]/encoded/multiprofile/
+create_profile_folders: true
+recursive: false
+file_patterns:
+  - "*.mkv"
+  - "*.mp4"

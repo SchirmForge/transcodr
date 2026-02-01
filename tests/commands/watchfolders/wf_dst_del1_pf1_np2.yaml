@@ -1,0 +1,18 @@
+# Watchfolder: destination, delete source, profile folders, 2 profiles
+# Expected: Source deleted after successful encoding, outputs in profile subfolders
+
+mode: watch
+profiles:
+  - x265-balanced
+  - x265-fast
+source: [media]/watchfolders/incoming/
+output_mode: destination
+destination: [media]/encoded/watchfolder/
+create_profile_folders: true
+delete_source: true
+min_age_seconds: 15
+recursive: false
+file_patterns:
+  - "*.mkv"
+  - "*.mp4"
+priority: 5

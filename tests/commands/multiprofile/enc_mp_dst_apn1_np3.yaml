@@ -1,0 +1,16 @@
+# Multi-profile: destination, append profile name, 3 profiles
+# Expected: All files have profile name suffix (video_x265-balanced.mkv, etc.)
+
+mode: encode
+profiles:
+  - x265-balanced
+  - x265-fast
+  - x264-compatible
+source: [media]/original/
+output_mode: destination
+destination: [media]/encoded/multiprofile/
+append_profile_name: true
+recursive: false
+file_patterns:
+  - "*.mkv"
+  - "*.mp4"

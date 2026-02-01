@@ -1,0 +1,19 @@
+# Destination mode, preserve structure, profile folders, append names, 3 profiles
+# Expected: Full organization with profile folders and profile names in filenames
+
+mode: encode
+profiles:
+  - x265-balanced
+  - x265-fast
+  - x264-compatible
+source: [media]/original/
+output_mode: destination
+destination: [media]/encoded/
+preserve_structure: true
+create_profile_folders: true
+append_profile_name: true
+recursive: true
+file_patterns:
+  - "*.mkv"
+  - "*.mp4"
+priority: 5

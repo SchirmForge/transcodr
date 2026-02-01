@@ -146,7 +146,7 @@ class EncodingRequest(BaseModel):
         description="Process subdirectories recursively"
     )
     file_patterns: list[str] = Field(
-        default_factory=lambda: ["*.mkv", "*.mp4", "*.avi", "*.mov", "*.wmv", "*.flv", "*.webm"],
+        default_factory=lambda: ["*.mkv", "*.mp4", "*.avi", "*.mov", "*.wmv", "*.flv", "*.webm", "*.m2ts", "*.ts"],
         description="File patterns to match (glob patterns)"
     )
 
@@ -167,6 +167,20 @@ class EncodingRequest(BaseModel):
         ge=1,
         le=10,
         description="Job priority (1=lowest, 10=highest)"
+    )
+
+    # Output organization options
+    create_profile_folders: bool = Field(
+        default=False,
+        description="Create subfolder per profile in destination (e.g., dest/x265-balanced/)"
+    )
+    append_profile_name: bool = Field(
+        default=False,
+        description="Always add profile name to output filename"
+    )
+    delete_source: bool = Field(
+        default=False,
+        description="Delete source file after successful encoding"
     )
 
     @model_validator(mode='before')
@@ -265,7 +279,7 @@ class EncodingRequest(BaseModel):
 
     def get_output_filename(self, source_file: Path, profile_name: str, profile_index: int) -> str:
         """
-        Generate output filename based on profile position.
+        Generate output filename based on profile position and settings.
 
         Args:
             source_file: Source file path
@@ -278,11 +292,14 @@ class EncodingRequest(BaseModel):
         stem = source_file.stem
         suffix = source_file.suffix
 
+        # If append_profile_name is enabled, always add profile name
+        if self.append_profile_name:
+            return f"{stem}_{profile_name}{suffix}"
+
+        # Default behavior: first profile keeps original name, others get suffix
         if profile_index == 0:
-            # First profile: use original filename
             return f"{stem}{suffix}"
         else:
-            # Subsequent profiles: add profile name suffix
             return f"{stem}_{profile_name}{suffix}"
 
 

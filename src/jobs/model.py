@@ -39,6 +39,7 @@ class Job(BaseModel):
     output_path: Optional[Path] = None  # Calculated during execution
     temp_path: Optional[Path] = None  # Temporary output path
     output_mode: OutputMode = Field(default=OutputMode.REPLACE)
+    delete_source: bool = Field(default=False)
 
     # Profile
     profile_name: str

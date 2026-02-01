@@ -104,6 +104,15 @@ class DaemonClient:
         """Clear failed jobs."""
         return self._request("DELETE", "/queue/failed")
 
+    def reload_config(self) -> dict:
+        """Reload daemon configuration."""
+        return self._request("POST", "/reload")
+
+    def purge_database(self, force: bool = False, confirm: bool = True) -> dict:
+        """Purge all jobs from database."""
+        params = {"force": str(force).lower(), "confirm": str(confirm).lower()}
+        return self._request("POST", "/purge", params=params)
+
 
 def get_client() -> DaemonClient:
     """Get daemon client with configured URL."""
@@ -213,17 +222,17 @@ def cmd_jobs(args):
         print("No jobs found")
         return
 
-    print(f"{'ID':<12} {'Status':<12} {'Profile':<15} {'Progress':<10} {'Source'}")
-    print("-" * 80)
+    print(f"{'ID':<14} {'Status':<12} {'Profile':<15} {'Progress':<10} {'Source'}")
+    print("-" * 82)
 
     for job in jobs:
-        job_id = job['id'][:10] + ".."
+        job_id = job['id'][:12]  # Show first 12 chars (enough to be unique)
         status = job['status']
         profile = job['profile'][:13] + ".." if len(job['profile']) > 15 else job['profile']
         progress = f"{job['progress']:.0f}%"
         source = Path(job['source_path']).name[:30]
 
-        print(f"{job_id:<12} {status:<12} {profile:<15} {progress:<10} {source}")
+        print(f"{job_id:<14} {status:<12} {profile:<15} {progress:<10} {source}")
 
     print()
     print(f"Total: {result['total']} jobs")
@@ -282,30 +291,42 @@ def cmd_watch(args):
     """List watchfolders."""
     client = get_client()
 
-    # Get config-based watchfolders (from YAML files)
     result = client.list_watchfolders()
-    watchfolders = result.get('watchfolders', {})
+    watchfolders = result.get('watchfolders', [])
 
-    command_watchers = watchfolders.get('command', [])
-    media_watchers = watchfolders.get('media', [])
-
-    if not command_watchers and not media_watchers:
+    if not watchfolders:
         print("No watchfolders running")
         print()
         print("Create a watchfolder config in ~/.config/videotranscode/watchfolders/")
         print("and restart the daemon.")
         return
 
+    # Group by type
+    command_watchers = [w for w in watchfolders if w.get('type') == 'command']
+    media_watchers = [w for w in watchfolders if w.get('type') == 'media']
+
     if command_watchers:
         print("COMMAND WATCHFOLDERS (watch for YAML command files):")
-        for path in command_watchers:
-            print(f"  {path}")
+        for watcher in command_watchers:
+            status = "paused" if watcher.get('paused') else "active"
+            source = watcher.get('source', 'config')
+            print(f"  {watcher['path']} [{status}] ({source})")
         print()
 
     if media_watchers:
         print("MEDIA WATCHFOLDERS (watch for video files):")
-        for path in media_watchers:
-            print(f"  {path}")
+        for watcher in media_watchers:
+            status = "paused" if watcher.get('paused') else "active"
+            source = watcher.get('source', 'config')
+            profiles = ", ".join(watcher.get('profiles', []))
+            dest = watcher.get('destination', 'N/A')
+            pending = watcher.get('pending_files', 0)
+            submitted = watcher.get('submitted_jobs', 0)
+            print(f"  {watcher['path']} [{status}] ({source})")
+            print(f"    profiles: {profiles}")
+            print(f"    destination: {dest}")
+            if pending or submitted:
+                print(f"    pending: {pending}, submitted: {submitted}")
         print()
 
 
@@ -374,6 +395,36 @@ def cmd_profiles(args):
     print(f"Location: {pm.user_profile_dir}")
 
 
+def cmd_reload(args):
+    """Reload daemon configuration."""
+    client = get_client()
+    result = client.reload_config()
+    print(result['message'])
+
+
+def cmd_purge(args):
+    """Purge all jobs from database."""
+    client = get_client()
+
+    # Confirmation prompt unless -y/--yes is passed
+    if not args.yes:
+        response = input("This will delete all job history. Are you sure? [y/N] ")
+        if response.lower() not in ('y', 'yes'):
+            print("Aborted")
+            return
+
+    try:
+        result = client.purge_database(force=args.force, confirm=True)
+        print(result['message'])
+    except Exception as e:
+        error_msg = str(e)
+        if "409" in error_msg and "in progress" in error_msg:
+            print("Error: Cannot purge while jobs are in progress.")
+            print("Use --force to cancel running jobs and purge anyway.")
+        else:
+            raise
+
+
 def main():
     """Main CLI entry point."""
     parser = argparse.ArgumentParser(
@@ -440,6 +491,16 @@ def main():
     # Profiles command
     profiles_parser = subparsers.add_parser("profiles", help="List available encoding profiles")
     profiles_parser.set_defaults(func=cmd_profiles)
+
+    # Reload command
+    reload_parser = subparsers.add_parser("reload", help="Reload daemon configuration")
+    reload_parser.set_defaults(func=cmd_reload)
+
+    # Purge command
+    purge_parser = subparsers.add_parser("purge", help="Purge all jobs from database")
+    purge_parser.add_argument("-y", "--yes", action="store_true", help="Skip confirmation prompt")
+    purge_parser.add_argument("-f", "--force", action="store_true", help="Force purge even if jobs are in progress")
+    purge_parser.set_defaults(func=cmd_purge)
 
     args = parser.parse_args()
 

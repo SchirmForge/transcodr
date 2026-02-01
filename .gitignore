@@ -21,8 +21,9 @@ logs/
 *.sqlite
 *.db
 
-# Temp encoding files
-tmp/
+# Temp stuff
+tmp/*
 *.part
 
-tests/fixtures/*
+# test video/audio files
+tests/[media]/*

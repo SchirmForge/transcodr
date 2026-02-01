@@ -1,0 +1,13 @@
+# Destination mode, highest priority, single profile
+# Expected: This job should be processed before lower priority jobs
+
+mode: encode
+profile: x265-balanced
+source: [media]/original/
+output_mode: destination
+destination: [media]/encoded/
+priority: 10
+recursive: false
+file_patterns:
+  - "*.mkv"
+  - "*.mp4"

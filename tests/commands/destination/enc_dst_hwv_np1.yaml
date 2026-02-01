@@ -1,0 +1,13 @@
+# Destination mode, VAAPI hardware acceleration, single profile
+# Expected: Encoding uses VAAPI if available
+
+mode: encode
+profile: x265-balanced
+source: [media]/original/
+output_mode: destination
+destination: [media]/encoded/
+hardware_accel: vaapi
+recursive: false
+file_patterns:
+  - "*.mkv"
+  - "*.mp4"

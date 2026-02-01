@@ -1,0 +1,15 @@
+# Destination mode, append profile name to all files, 2 profiles
+# Expected: video_x265-balanced.mkv and video_x265-fast.mkv
+
+mode: encode
+profiles:
+  - x265-balanced
+  - x265-fast
+source: [media]/original/
+output_mode: destination
+destination: [media]/encoded/
+append_profile_name: true
+recursive: false
+file_patterns:
+  - "*.mkv"
+  - "*.mp4"

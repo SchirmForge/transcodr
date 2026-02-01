@@ -1,0 +1,16 @@
+# Watchfolder: destination, recursive, preserve structure, single profile
+# Expected: Subdirectories monitored, structure preserved in destination
+
+mode: watch
+profile: x265-balanced
+source: [media]/watchfolders/incoming/
+output_mode: destination
+destination: [media]/encoded/watchfolder/
+preserve_structure: true
+recursive: true
+min_age_seconds: 15
+file_patterns:
+  - "*.mkv"
+  - "*.mp4"
+  - "*.avi"
+priority: 5

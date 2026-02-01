@@ -1,0 +1,28 @@
+# Multi-profile: destination, preserve structure, profile folders, append names, 3 profiles
+# Expected: Full organization - directory structure + profile folders + profile names
+# Output structure:
+#   [media]/encoded/multiprofile/
+#   ├── subdir/
+#   │   ├── x265-balanced/
+#   │   │   └── video_x265-balanced.mkv
+#   │   ├── x265-fast/
+#   │   │   └── video_x265-fast.mkv
+#   │   └── x264-compatible/
+#   │       └── video_x264-compatible.mkv
+
+mode: encode
+profiles:
+  - x265-balanced
+  - x265-fast
+  - x264-compatible
+source: [media]/original/
+output_mode: destination
+destination: [media]/encoded/multiprofile/
+preserve_structure: true
+create_profile_folders: true
+append_profile_name: true
+recursive: true
+file_patterns:
+  - "*.mkv"
+  - "*.mp4"
+priority: 7

@@ -949,6 +949,97 @@ def detect_hardware_accel() -> list[str]:
 
 ---
 
+## Watch Folder Architecture
+
+### Watch Folder Types
+
+Video Transcode supports two types of watch folders:
+
+```
+WatchfolderService
+├── CommandFileWatcher (type: command)
+│   └── Watches for *.yaml command files
+│   └── Encoding settings come from the YAML file
+│
+└── MediaFileWatcher (type: media)
+    └── Watches for video/audio files
+    └── Encoding settings come from watchfolder config
+    └── Uses size stability for readiness detection
+```
+
+### File Stability Detection
+
+For media watch folders, files are detected using size-based stability:
+
+```python
+@dataclass
+class PendingFile:
+    """Tracks a pending file for size stability detection."""
+    first_seen: float
+    last_size: int
+    stable_count: int = 0
+
+def is_file_ready(file_path: Path) -> bool:
+    """Check if file is ready using size stability."""
+    current_size = file_path.stat().st_size
+
+    if path_str not in pending_files:
+        # First time seeing this file
+        pending_files[path_str] = PendingFile(
+            first_seen=time.time(),
+            last_size=current_size,
+        )
+        return False
+
+    pending = pending_files[path_str]
+
+    if current_size == pending.last_size:
+        # Size unchanged - increment stable count
+        pending.stable_count += 1
+    else:
+        # Size changed - reset counter
+        pending.last_size = current_size
+        pending.stable_count = 0
+
+    return pending.stable_count >= config.stability_scans
+```
+
+### Media File Lifecycle
+
+When encoding files from a media watchfolder:
+
+```
+movie.mkv                    # Original file detected
+movie.mkv.processing         # Renamed during encoding
+movie.mkv.processed          # Encoding succeeded
+movie.mkv.failed             # Encoding failed
+```
+
+This prevents re-detection of files during encoding.
+
+### Configuration (v0.1)
+
+Watch folders are configured in `~/.config/videotranscode/watchfolders/`:
+
+```yaml
+# Command watchfolder
+watchfolder_location: /tmp/encode-commands
+watchfolder_type: command
+scan_interval: 5
+
+# Media watchfolder
+watchfolder_location: /home/user/downloads
+watchfolder_type: media
+scan_interval: 10
+stability_scans: 3
+profiles:
+  - x265-balanced
+output_mode: destination
+destination: /media/encoded/
+```
+
+---
+
 ## Testing Strategy
 
 ### Unit Tests
@@ -989,16 +1080,16 @@ def test_encode_workflow(sample_video):
     """
 ```
 
-### Test Fixtures
+### Test [media]
 ```
 tests/
-├── fixtures/
+├── [media]/
 │   ├── sample-h264.mp4      # 5-second test video
 │   ├── sample-hevc.mkv
 │   └── corrupted.avi
 ├── mocks/
 │   └── ffmpeg.py            # Mock FFmpeg subprocess
-└── conftest.py              # Pytest fixtures
+└── conftest.py              # Pytest [media]
 ```
 
 ---
@@ -1125,15 +1216,18 @@ videotranscode/
 │   │   ├── runner.py           # Job execution engine
 │   │   ├── batch.py            # Batch directory scanning
 │   │   └── retry.py            # Retry policy
-│   ├── watcher/
+│   ├── api/
 │   │   ├── __init__.py
-│   │   └── monitor.py          # Hot folder monitoring
+│   │   ├── app.py              # FastAPI application
+│   │   ├── queue.py            # Job queue with SQLite
+│   │   ├── watcher.py          # Watchfolder service
+│   │   └── models.py           # API request/response models
 │   ├── api.py                  # FastAPI app (API endpoints)
 │   ├── cli.py                  # Typer CLI (API client)
 │   ├── daemon.py               # Daemon main loop
 │   └── client.py               # Python client library (optional)
 ├── tests/
-│   ├── fixtures/               # Sample media files
+│   ├── [media]/               # Sample media files
 │   ├── mocks/                  # Mock objects
 │   ├── unit/
 │   │   ├── test_ffmpeg.py

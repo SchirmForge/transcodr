@@ -1,0 +1,8 @@
+# Destination mode, single specific file
+# Expected: Only the specified file is encoded
+
+mode: encode
+profile: x265-balanced
+source: [media]/original/test-video.mkv
+output_mode: destination
+destination: [media]/encoded/

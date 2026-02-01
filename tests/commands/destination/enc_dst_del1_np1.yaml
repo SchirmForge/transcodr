@@ -1,0 +1,14 @@
+# Destination mode, delete source after encoding, single profile
+# Expected: Output to [media]/encoded/, source file DELETED
+# WARNING: Use with [media]/replace/ to avoid deleting original files!
+
+mode: encode
+profile: x265-balanced
+source: [media]/replace/
+output_mode: destination
+destination: [media]/encoded/
+delete_source: true
+recursive: false
+file_patterns:
+  - "*.mkv"
+  - "*.mp4"

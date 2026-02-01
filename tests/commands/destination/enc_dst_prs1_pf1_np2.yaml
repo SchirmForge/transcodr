@@ -1,0 +1,16 @@
+# Destination mode, preserve structure, profile folders, 2 profiles
+# Expected: [media]/encoded/<structure>/x265-balanced/ and [media]/encoded/<structure>/x265-fast/
+
+mode: encode
+profiles:
+  - x265-balanced
+  - x265-fast
+source: [media]/original/
+output_mode: destination
+destination: [media]/encoded/
+preserve_structure: true
+create_profile_folders: true
+recursive: true
+file_patterns:
+  - "*.mkv"
+  - "*.mp4"

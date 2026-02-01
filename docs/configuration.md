@@ -32,6 +32,7 @@ Video Transcode uses a configuration directory located at:
 This directory contains:
 - **config.yaml** - Global configuration settings
 - **profiles/** - User-defined and customized encoding profiles
+- **watchfolders/** - Watch folder configurations
 - **jobs.db** - Job history database (created automatically)
 
 ## Initial Setup
@@ -159,22 +160,135 @@ hot_folders: []
   - `size:10MB` - Rotate at 10MB (future feature)
 - **per_job_logs**: Create separate log file per encoding job
 
-#### Hot Folder Monitoring
+#### Hot Folder Monitoring (Legacy)
 
-Optional feature to automatically encode files placed in watched directories.
+Hot folders defined in `config.yaml` are a legacy feature. For new setups, use **Watch Folders** (see below).
 
-Example:
 ```yaml
 hot_folders:
   - path: /media/downloads
     profile: x265-balanced
-    min_age_seconds: 300           # Wait 5 minutes before processing
-    recursive: true                # Monitor subdirectories
+    min_age_seconds: 300
+    recursive: true
+```
 
-  - path: /media/recordings
-    profile: x265-quality
-    min_age_seconds: 60
-    recursive: false
+## Watch Folders
+
+Watch folders are configured in separate YAML files in `~/.config/videotranscode/watchfolders/`.
+
+See [Watch Folders Guide](watchfolders.md) for detailed documentation.
+
+### Command Watch Folder
+
+Monitors for YAML command files:
+
+```yaml
+# ~/.config/videotranscode/watchfolders/commands.yaml
+watchfolder_location: /tmp/encode-commands
+watchfolder_type: command
+scan_interval: 5
+```
+
+### Media Watch Folder
+
+Monitors for video files directly:
+
+```yaml
+# ~/.config/videotranscode/watchfolders/downloads.yaml
+watchfolder_location: /home/user/downloads
+watchfolder_type: media
+scan_interval: 10
+stability_scans: 3
+profiles:
+  - x265-balanced
+output_mode: destination
+destination: /media/encoded/
+```
+
+## Encoding Request Parameters
+
+When submitting encoding jobs via CLI or API, these parameters control behavior:
+
+### Output Modes
+
+| Mode | Description |
+|------|-------------|
+| `replace` | Replace original file in-place (with optional backup) |
+| `destination` | Output to separate folder |
+
+### Request Parameters
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `source` | string | required | Source file or folder path |
+| `profiles` | list | required | Encoding profile(s) to use |
+| `output_mode` | string | `replace` | `replace` or `destination` |
+| `destination` | string | - | Output folder (required for destination mode) |
+| `recursive` | bool | `true` | Process subdirectories |
+| `file_patterns` | list | `["*.mkv", "*.mp4", ...]` | File patterns to match |
+| `preserve_structure` | bool | `true` | Recreate folder structure in destination |
+| `create_profile_folders` | bool | `false` | Create subfolder per profile |
+| `append_profile_name` | bool | `false` | Add profile name to filename |
+| `delete_source` | bool | `false` | Delete source after successful encoding |
+| `backup` | bool | `true` | Create backup (replace mode only) |
+| `backup_dir` | string | `.originals` | Backup directory |
+| `priority` | int | `5` | Job priority (1-10, 10=highest) |
+| `hardware_accel` | string | `null` | Override hardware acceleration |
+
+### Example Request
+
+```yaml
+mode: encode
+profiles:
+  - x265-balanced
+  - x265-fast
+source: /media/videos/
+output_mode: destination
+destination: /media/encoded/
+preserve_structure: true
+create_profile_folders: true
+append_profile_name: false
+recursive: true
+file_patterns:
+  - "*.mkv"
+  - "*.mp4"
+  - "*.m2ts"
+priority: 5
+```
+
+### Output Organization Examples
+
+**Basic destination mode:**
+```
+Input:  /source/movie.mkv
+Output: /dest/movie.mkv
+```
+
+**With `preserve_structure: true`:**
+```
+Input:  /source/subdir/movie.mkv
+Output: /dest/subdir/movie.mkv
+```
+
+**With `create_profile_folders: true`:**
+```
+Input:  /source/movie.mkv
+Output: /dest/x265-balanced/movie.mkv
+        /dest/x265-fast/movie.mkv
+```
+
+**With `append_profile_name: true`:**
+```
+Input:  /source/movie.mkv
+Output: /dest/movie_x265-balanced.mkv
+        /dest/movie_x265-fast.mkv
+```
+
+**All options combined:**
+```
+Input:  /source/subdir/movie.mkv
+Output: /dest/subdir/x265-balanced/movie_x265-balanced.mkv
+        /dest/subdir/x265-fast/movie_x265-fast.mkv
 ```
 
 ## Profiles

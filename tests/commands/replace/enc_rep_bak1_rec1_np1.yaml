@@ -1,0 +1,14 @@
+# Replace mode, backup enabled, recursive, single profile
+# Expected: All files in subdirectories replaced, backups created
+
+mode: encode
+profile: x265-balanced
+source: [media]/replace/
+output_mode: replace
+backup: true
+backup_dir: .originals
+recursive: true
+file_patterns:
+  - "*.mkv"
+  - "*.mp4"
+  - "*.avi"

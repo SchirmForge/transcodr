@@ -1,0 +1,16 @@
+# Multi-profile: replace mode, 3 profiles
+# Expected: First profile replaces original, others get suffix (_x265-fast, _x264-compatible)
+
+mode: encode
+profiles:
+  - x265-balanced
+  - x265-fast
+  - x264-compatible
+source: [media]/replace/
+output_mode: replace
+backup: true
+backup_dir: .originals
+recursive: false
+file_patterns:
+  - "*.mkv"
+  - "*.mp4"

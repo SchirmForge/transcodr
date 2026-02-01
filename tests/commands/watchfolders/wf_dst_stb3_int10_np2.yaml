@@ -1,0 +1,16 @@
+# Watchfolder: destination mode, 3 stability scans, 10s interval, 2 profiles
+# Expected: Files detected after 3 consecutive size-stable scans (30s total)
+
+mode: watch
+profiles:
+  - x265-balanced
+  - x265-fast
+source: [media]/watchfolders/incoming/
+output_mode: destination
+destination: [media]/encoded/watchfolder/
+min_age_seconds: 30
+recursive: false
+file_patterns:
+  - "*.mkv"
+  - "*.mp4"
+priority: 5

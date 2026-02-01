@@ -177,6 +177,14 @@ class JobRunner:
                 # Replace mode, subsequent profiles: copy to output path (with profile suffix)
                 self._copy_to_output(job)
 
+            # Delete source if requested (only for destination mode, as replace mode already replaces)
+            if job.delete_source and job.output_mode == OutputMode.DESTINATION:
+                try:
+                    job.source_path.unlink()
+                    logger.info(f"Deleted source file: {job.source_path}")
+                except Exception as e:
+                    logger.warning(f"Failed to delete source file: {e}")
+
             # Mark completed
             job.mark_completed()
             if progress_callback:

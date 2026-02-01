@@ -1,0 +1,13 @@
+# Destination mode, NO hardware acceleration (software only), single profile
+# Expected: Encoding uses CPU only
+
+mode: encode
+profile: x265-balanced
+source: [media]/original/
+output_mode: destination
+destination: [media]/encoded/
+hardware_accel: none
+recursive: false
+file_patterns:
+  - "*.mkv"
+  - "*.mp4"

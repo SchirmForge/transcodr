@@ -1,0 +1,13 @@
+# Destination mode, preserve structure, single profile
+# Expected: Folder structure from source recreated in destination
+
+mode: encode
+profile: x265-balanced
+source: [media]/original/
+output_mode: destination
+destination: [media]/encoded/
+preserve_structure: true
+recursive: true
+file_patterns:
+  - "*.mkv"
+  - "*.mp4"
