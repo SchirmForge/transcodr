@@ -89,6 +89,19 @@ class JobQueue:
 
         logger.info("Job queue stopped")
 
+    def set_max_concurrent(self, max_concurrent: int) -> None:
+        """
+        Update the maximum concurrent jobs limit.
+
+        Changes take effect immediately:
+        - If increased: pending jobs will start on next processor iteration
+        - If decreased: running jobs continue, new jobs wait until under limit
+        """
+        old_value = self.max_concurrent
+        self.max_concurrent = max_concurrent
+        if old_value != max_concurrent:
+            logger.info(f"Max concurrent jobs updated: {old_value} -> {max_concurrent}")
+
     def _init_db(self):
         """Initialize SQLite database."""
         self._conn = sqlite3.connect(str(self.db_path), check_same_thread=False)

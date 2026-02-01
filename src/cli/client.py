@@ -399,7 +399,39 @@ def cmd_reload(args):
     """Reload daemon configuration."""
     client = get_client()
     result = client.reload_config()
-    print(result['message'])
+
+    print()
+    print("=" * 60)
+    print("CONFIGURATION RELOADED")
+    print("=" * 60)
+    print()
+    print(f"  Config file: {result.get('config_path', 'N/A')}")
+    print()
+
+    # Display configuration if available
+    config = result.get('config', {})
+    if config:
+        daemon = config.get('daemon', {})
+        storage = config.get('storage', {})
+        ffmpeg = config.get('ffmpeg', {})
+
+        print("DAEMON:")
+        print(f"  Host:              {daemon.get('host', 'N/A')}")
+        print(f"  Port:              {daemon.get('port', 'N/A')}")
+        print(f"  Max concurrent:    {daemon.get('max_concurrent_jobs', 'N/A')}")
+        print()
+        print("STORAGE:")
+        print(f"  Root media:        {storage.get('root_media', 'N/A')}")
+        print(f"  Temp directory:    {storage.get('temp_dir', 'N/A')}")
+        print(f"  Backup directory:  {storage.get('backup_dir', 'N/A')}")
+        print(f"  Backup originals:  {storage.get('backup_originals', 'N/A')}")
+        print(f"  Min free space:    {storage.get('min_free_space_gb', 'N/A')} GB")
+        print()
+        print("ENCODING:")
+        print(f"  Hardware accel:    {ffmpeg.get('hardware_accel', 'N/A')}")
+        print()
+
+    print("=" * 60)
 
 
 def cmd_purge(args):

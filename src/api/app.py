@@ -493,16 +493,45 @@ async def reload_config():
         _config = ConfigManager.load_config()
         logger.info(f"Configuration reloaded from: {ConfigManager.DEFAULT_CONFIG_PATH}")
 
+        # Update job queue settings
+        if _job_queue:
+            _job_queue.set_max_concurrent(_config.daemon.max_concurrent_jobs)
+
         # Restart watchfolder service
         if _watchfolder_service:
             await _watchfolder_service.stop()
             await _watchfolder_service.start()
             logger.info("Watchfolder service reloaded")
 
+        # Return configuration details
+        from ..config.manager import expand_path
+        root_media_expanded = str(expand_path(_config.storage.root_media))
+        temp_dir_expanded = str(expand_path(_config.storage.temp_dir))
+
         return {
             "success": True,
             "message": "Configuration reloaded successfully",
             "config_path": str(ConfigManager.DEFAULT_CONFIG_PATH),
+            "config": {
+                "daemon": {
+                    "host": _config.daemon.host,
+                    "port": _config.daemon.port,
+                    "max_concurrent_jobs": _config.daemon.max_concurrent_jobs,
+                },
+                "storage": {
+                    "root_media": root_media_expanded,
+                    "temp_dir": temp_dir_expanded,
+                    "backup_dir": _config.storage.backup_dir,
+                    "backup_originals": _config.storage.backup_originals,
+                    "min_free_space_gb": _config.storage.min_free_space_gb,
+                },
+                "ffmpeg": {
+                    "hardware_accel": _config.ffmpeg.hardware_accel,
+                },
+                "logging": {
+                    "level": _config.logging.level,
+                },
+            },
         }
     except Exception as e:
         logger.error(f"Failed to reload configuration: {e}", exc_info=True)
