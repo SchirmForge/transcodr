@@ -16,7 +16,6 @@ from .models import (
     WatchFolderListResponse,
 )
 from .queue import JobQueue
-from .watcher import WatchFolderManager, CommandFileWatcher
 
 __all__ = [
     # Models
@@ -33,8 +32,6 @@ __all__ = [
     "JobListResponse",
     "CancelJobResponse",
     "WatchFolderListResponse",
-    # Queue and watchers
+    # Queue
     "JobQueue",
-    "WatchFolderManager",
-    "CommandFileWatcher",
 ]

@@ -27,3 +27,6 @@ tmp
 
 # test video/audio files
 tests/media
+
+# local config
+config

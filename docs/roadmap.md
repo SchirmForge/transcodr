@@ -1,6 +1,6 @@
 # VideoTranscode Roadmap
 
-## Current Version: 0.1
+## Current Version: 0.2.1
 
 ## Use Cases Overview
 
@@ -13,9 +13,10 @@
 | 5 | Output organization | ✅ Done | Profile folders, append name, preserve structure |
 | 6 | Hardware acceleration | ✅ Done | VAAPI auto-detection and selection |
 | 7 | Parallel encoding | ✅ Done | Configurable max_concurrent_jobs |
-| 8 | Notifications | ❌ Pending | Desktop, webhooks, Signal/Pushover |
-| 9 | Video filters | ❌ Pending | Resize, crop, deinterlace, logo |
-| 10 | Distributed encoding | ❌ Pending | Multiple workers |
+| 8 | Folder drop processing | ✅ Done | Drop folders with nested subdirectories |
+| 9 | Notifications | ❌ Pending | Desktop, webhooks, Signal/Pushover |
+| 10 | Video filters | ❌ Pending | Resize, crop, deinterlace, logo |
+| 11 | Distributed encoding | ❌ Pending | Multiple workers |
 
 ---
 
@@ -75,13 +76,26 @@
 
 ---
 
-## Planned Features
+## Completed Features (v0.2.1)
 
-### Version 0.2.1: Watch Folder Improvements
+### Watch Folder Improvements
 - [x] `root_media` config placeholder for portable command files
-- [ ] Folder parsing for nested directories
-- [ ] Sub-folder detection and recursive processing
-- [ ] New file detection during encoding
+- [x] Environment variable expansion (`$HOME`, `${HOME}`, `~`, `$USER`)
+- [x] Folder drop processing (`allow_folder_drop` option)
+- [x] Nested subdirectory scanning with stability detection
+- [x] `preserve_folder_structure` for dropped folders
+- [x] New file detection during encoding (re-scan after job submission)
+- [x] Folder completion tracking with `.processed` rename or delete
+
+### Code Architecture
+- [x] Dedicated `src/watcher/` module (moved from config/ and api/)
+- [x] `WatchfolderConfigManager` for config loading
+- [x] `FolderProcessor` for folder stability and completion tracking
+- [x] Circular import resolution with TYPE_CHECKING
+
+---
+
+## Planned Features
 
 ### Version 0.2.2: Extract Profiles
 - [ ] Stream copy support (`copy: true` for video/audio)
@@ -91,6 +105,7 @@
 ### Version 0.2.3: Audio File Encoding
 - [ ] Lossless audio support (FLAC, WAV, ALAC, APE, WavPack, DSD)
 - [ ] Audio-specific encoding profiles
+- [ ] Additional parameters: profile/command/watchfolders max_concurrent_jobs, destination folder per profile, include profile in destination file names
 
 ### Version 0.2.4: Subtitles Management
 - [ ] Auto-detect external subtitle files (.srt, .ass, .ssa, .sub, .vtt)
@@ -111,7 +126,14 @@
 - [ ] Settings configuration
 - [ ] System status and logs
 
-### Version 0.2.7: Video Filters
+### Version 0.3.1: Distributed Encoding
+- [ ] Controller/worker architecture
+- [ ] Worker types: local, LAN, remote
+- [ ] Job distribution strategies
+- [ ] File transfer for remote workers
+- [ ] Worker health monitoring
+
+### Version 0.3.2: Video Filters
 - [ ] Scale/resize with aspect ratio
 - [ ] Crop (black bar removal)
 - [ ] Deinterlace (yadif, bwdif)
@@ -119,13 +141,6 @@
 - [ ] Logo/watermark overlay
 - [ ] HDR to SDR tonemap
 - [ ] Filter chain generation
-
-### Version 0.3.1: Distributed Encoding
-- [ ] Controller/worker architecture
-- [ ] Worker types: local, LAN, remote
-- [ ] Job distribution strategies
-- [ ] File transfer for remote workers
-- [ ] Worker health monitoring
 
 ### Future Considerations
 - HDR metadata preservation
@@ -135,53 +150,29 @@
 
 ---
 
-## Quick Reference
-
-### Commands
-```bash
-# Daemon
-python -m src.daemon
-
-# CLI
-python -m src.cli.client status
-python -m src.cli.client submit /path/to/video.mkv -p x265-balanced
-python -m src.cli.client jobs
-python -m src.cli.client profiles
-python -m src.cli.client watch
-python -m src.cli.client reload
-python -m src.cli.client purge -y
-```
-
-### Configuration Locations
-- Config: `~/.config/videotranscode/config.yaml`
-- Profiles: `~/.config/videotranscode/profiles/`
-- Watchfolders: `~/.config/videotranscode/watchfolders/`
-- Database: `~/.config/videotranscode/jobs.db`
-
-### API Endpoints
-- Status: `GET /status`
-- Jobs: `GET/POST /jobs`, `GET/DELETE /jobs/{id}`
-- Profiles: `GET /profiles`, `GET/DELETE /profiles/{name}`
-- Watchfolders: `GET /watchfolders`, `GET/DELETE /watchfolders/{id}`
-- Admin: `POST /reload`, `POST /purge`
-
----
-
 ## Version History
 
 ### v0.3 (Planned)
 - Distributed encoding with controller/worker architecture
+- Video filters
 
-### v0.2 (Planned)
-- Watch folder improvements (0.2.1)
+### v0.2 (In Progress)
+- ✅ Watch folder improvements (0.2.1) - **DONE**
 - Extract profiles (0.2.2)
 - Audio file encoding (0.2.3)
 - Subtitles management (0.2.4)
 - Notifications (0.2.5)
 - Web UI (0.2.6)
-- Video filters (0.2.7)
 
-### v0.1 (Current)
+
+### v0.2.1 (Current)
+- `$root_media` placeholder and environment variable expansion
+- Folder drop processing with nested subdirectory support
+- Folder structure preservation for dropped folders
+- FolderProcessor with stability detection and completion tracking
+- Dedicated `src/watcher/` module architecture
+
+### v0.1
 - Core encoding pipeline with multi-profile support
 - Daemon with REST API and SQLite persistence
 - Command and media watch folders

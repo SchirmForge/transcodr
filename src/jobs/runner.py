@@ -270,8 +270,19 @@ class JobRunner:
         if job.output_path is None:
             job.output_path = job.source_path
 
-        # Create temp path
-        temp_filename = f"{job.id}_{job.source_path.stem}_encoded{job.source_path.suffix}"
+        # Create temp path - handle .processing/.processed/.failed markers
+        source_name = job.source_path.name
+        source_suffix = job.source_path.suffix
+
+        # Strip processing markers to get real extension
+        processing_markers = [".processing", ".processed", ".failed"]
+        if source_suffix in processing_markers:
+            # Real extension is in the stem (e.g., "video.mkv.processing" -> stem="video.mkv")
+            real_stem = Path(job.source_path.stem)
+            source_suffix = real_stem.suffix or ".mkv"  # Fallback to .mkv
+            source_name = real_stem.stem
+
+        temp_filename = f"{job.id}_{source_name}_encoded{source_suffix}"
         job.temp_path = self.temp_dir / temp_filename
 
         logger.debug(f"Temp path: {job.temp_path}")

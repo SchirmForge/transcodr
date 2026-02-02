@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Optional
 import yaml
 
-from .schema import Config, WatchfolderConfig
+from .schema import Config
 
 logger = logging.getLogger(__name__)
 
@@ -320,34 +320,6 @@ hot_folders: []
     def get_watchfolders_config_dir() -> Path:
         """Get watchfolders configuration directory path."""
         return ConfigManager.get_config_dir() / "watchfolders"
-
-    @staticmethod
-    def load_watchfolder_configs() -> list[WatchfolderConfig]:
-        """
-        Load all watchfolder configurations from watchfolders directory.
-
-        Returns:
-            List of WatchfolderConfig objects
-        """
-        watchfolders_dir = ConfigManager.get_watchfolders_config_dir()
-        configs = []
-
-        if not watchfolders_dir.exists():
-            return configs
-
-        for yaml_file in watchfolders_dir.glob("*.yaml"):
-            try:
-                with open(yaml_file) as f:
-                    data = yaml.safe_load(f)
-
-                if data:
-                    config = WatchfolderConfig(**data)
-                    configs.append(config)
-                    logger.info(f"Loaded watchfolder config: {yaml_file.name} -> {config.watchfolder_location}")
-            except Exception as e:
-                logger.error(f"Failed to load watchfolder config {yaml_file}: {e}")
-
-        return configs
 
     @staticmethod
     def ensure_config_structure() -> None:

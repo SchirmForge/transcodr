@@ -7,14 +7,30 @@ A robust, production-ready video transcoding system with daemon, CLI, and API in
 - **Daemon-based architecture** - Background service with REST API
 - **Multi-profile encoding** - Encode one source to multiple formats simultaneously
 - **Watch folders** - Automatic encoding via command files or direct media detection
+- **Folder drop support** - Drop entire folder trees with automatic subdirectory processing
 - **Hardware acceleration** - VAAPI (AMD/Intel), NVENC, QSV support
 - **Safe file replacement** - Backup originals, validate output, atomic operations
 - **Flexible output** - Replace original or output to destination folder
 - **SQLite persistence** - Job queue survives daemon restarts
+- **Portable configs** - Use `$root_media`, `$HOME`, `~` placeholders in paths
 
-## Project Status: Version 0.1
+## Project Status: Version 0.2.1
 
-### Completed Features
+### What's New in v0.2.1
+
+**Watch Folder Improvements**
+- `$root_media` placeholder for portable command files and watchfolder configs
+- Environment variable expansion (`$HOME`, `${HOME}`, `~`, `$USER`)
+- Folder drop processing with `allow_folder_drop` option
+- Nested subdirectory scanning with stability detection
+- `preserve_folder_structure` works correctly for dropped folders
+- Automatic folder completion tracking with `.processed` rename or delete
+
+**Code Architecture**
+- Dedicated `src/watcher/` module for all watchfolder functionality
+- Cleaner separation of concerns (schema, manager, watchers, service)
+
+### Core Features (v0.1)
 
 **Core Encoding**
 - FFmpeg wrapper with progress streaming
@@ -184,7 +200,7 @@ Monitors a folder for video files directly:
 
 ```yaml
 # ~/.config/videotranscode/watchfolders/downloads.yaml
-watchfolder_location: /home/user/downloads
+watchfolder_location: $HOME/downloads
 watchfolder_type: media
 scan_interval: 10
 stability_scans: 3
@@ -193,8 +209,29 @@ file_patterns:
   - "*.mp4"
 profiles:
   - x265-balanced
-output_mode: destination
-destination: /media/encoded/
+destination: $root_media/encoded/
+preserve_folder_structure: true
+```
+
+### Media Watch Folder with Folder Drops
+
+Process entire folders dropped into the watch location:
+
+```yaml
+# ~/.config/videotranscode/watchfolders/folder-drop.yaml
+watchfolder_location: $HOME/encode-folders
+watchfolder_type: media
+scan_interval: 5
+stability_scans: 2
+allow_folder_drop: true           # Enable folder processing
+preserve_folder_structure: true   # Keep subfolder structure
+file_patterns:
+  - "*.mkv"
+  - "*.mp4"
+profiles:
+  - x265-fast
+destination: $root_media/encoded/
+keep_processed_files: false       # Delete source after encoding
 ```
 
 See [docs/watchfolders.md](docs/watchfolders.md) for detailed guide.
@@ -248,10 +285,22 @@ storage:
   temp_dir: /tmp/videotranscode
   backup_originals: true
   backup_dir: .originals
+  root_media: ~/Videos   # Base path for $root_media placeholder
 
 ffmpeg:
   hardware_accel: auto  # auto|vaapi|nvenc|qsv|none
 ```
+
+### Path Placeholders
+
+Use these placeholders in watchfolder and command configs:
+
+| Placeholder | Expands To |
+|-------------|------------|
+| `$root_media` | Value of `storage.root_media` in config |
+| `$HOME`, `${HOME}` | User's home directory |
+| `~` | User's home directory |
+| `$USER` | Current username |
 
 See [docs/configuration.md](docs/configuration.md) for detailed guide.
 

@@ -64,7 +64,7 @@ profiles:
 source: /media/videos/
 output_mode: destination
 destination: /media/encoded/
-preserve_structure: true
+preserve_folder_structure: true
 recursive: true
 ```
 
@@ -133,18 +133,26 @@ priority: 5
 
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
+| **Location/Type** ||||
 | `watchfolder_location` | path | required | Directory to monitor |
 | `watchfolder_type` | string | `command` | `command` or `media` |
-| `scan_interval` | float | 5.0 | Seconds between scans |
-| `stability_scans` | int | 2 | Consecutive stable size scans before processing |
+| **File Detection** ||||
+| `scan_interval` | float | `5.0` | Seconds between scans (min: 1.0) |
+| `stability_scans` | int | `2` | Consecutive stable size scans before processing |
 | `file_patterns` | list | `["*.mkv", "*.mp4", ...]` | Glob patterns to match |
-| `recursive` | bool | false | Monitor subdirectories |
-| `profiles` | list | required | Encoding profiles to use |
-| `output_mode` | string | `destination` | Must be `destination` for media watch |
-| `destination` | path | required | Output directory |
-| `backup` | bool | true | Create backup (N/A for destination mode) |
-| `priority` | int | 5 | Job priority (1-10) |
+| `recursive` | bool | `false` | Detect files in watchfolder subdirectories (i.e.: multi-user mode) |
+| `allow_folder_drop` | bool | `false` | Enable processing of dropped folders as complete units |
+| **Encoding (media type)** ||||
+| `profiles` | list | `[]` | Encoding profiles (required for media type) |
+| `destination` | path | null | Output directory (required for media, must differ from watchfolder_location) |
+| `temp_folder` | path | null | Temp folder for source copy during encoding |
+| `disable_temp_copy` | bool | `false` | If true, encode directly from source without copying |
+| `keep_processed_files` | bool | `true` | Keep source (rename to .processed) or delete after encoding |
+| `preserve_folder_structure` | bool | `true` | Maintain folder hierarchy from source to destination |
 | `hardware_accel` | string | null | Override hardware acceleration |
+| `priority` | int | `5` | Job priority (1=lowest, 10=highest) |
+
+> **Note:** `recursive` and `allow_folder_drop` are mutually exclusive. Use `recursive` for multi-user scenarios where files are dropped in user subdirectories. Use `allow_folder_drop` to process entire folders as units.
 
 ### File Stability Detection
 
@@ -171,6 +179,133 @@ movie.mkv.failed             # Encoding failed
 ```
 
 The original file is renamed to prevent re-detection during encoding.
+
+### Source File Handling After Encoding
+
+The `keep_processed_files` setting controls what happens to source files after successful encoding:
+
+#### keep_processed_files: true (default)
+
+Source files are renamed with a `.processed` suffix to prevent re-detection:
+
+```yaml
+keep_processed_files: true  # Default behavior
+```
+
+**Single File:**
+```
+movie.mkv                    # Original file
+movie.mkv.processing         # During encoding
+movie.mkv.processed          # After successful encoding
+```
+
+**Folder:**
+```
+MyMovie/                     # Original folder
+MyMovie/                     # Files inside marked .processing during encoding
+MyMovie.processed/           # After all files complete
+```
+
+#### keep_processed_files: false
+
+Source files and folders are **permanently deleted** after successful encoding:
+
+```yaml
+keep_processed_files: false  # WARNING: Deletes source files!
+```
+
+**Single File:**
+- File is deleted after successful encoding
+- Only the encoded file in destination remains
+
+**Folder:**
+- Entire folder tree is deleted (including non-video files)
+- Only encoded files in destination remain
+
+> **Warning:** Use `keep_processed_files: false` with caution:
+> - Source files cannot be recovered after deletion
+> - For folders, ALL contents are deleted (not just video files)
+> - Failed encodes leave source as `.failed` (not deleted)
+> - Ensure destination has adequate space before enabling
+
+### Folder Processing
+
+When `allow_folder_drop: true` is set, folders dropped into a media watchfolder are processed as complete units.
+
+> **Important:** Set `allow_folder_drop: true` to enable folder processing. By default, dropped folders are ignored.
+
+#### How It Works
+
+1. **Detection**: Folder detected at top level of watchfolder
+2. **Registration**: Folder registered for recursive processing
+3. **Initial Scan**: All video files matching `file_patterns` discovered recursively inside the folder
+4. **Stability Detection**: Each file undergoes size stability checks individually
+5. **Job Submission**: Ready files submitted for encoding as they become stable
+6. **Continuous Re-scanning**: Folder re-scanned during encoding to catch new files
+7. **Completion**: Folder complete when all jobs done and no new files detected
+
+#### Completion Criteria
+
+A folder is considered complete when ALL conditions are met:
+- All encoding jobs finished (success or failure)
+- No files waiting for stability checks
+- Multiple scans show no new files (`stable_scans >= stability_scans`)
+
+#### Example: Processing a Movie Folder
+
+```yaml
+# Enable folder processing
+allow_folder_drop: true
+```
+
+```
+/watchfolder/
+└── My.Movie.2024/              # Dropped folder
+    ├── movie.mkv               # Video file
+    ├── movie.srt               # Subtitle (ignored - not in file_patterns)
+    └── extras/
+        └── trailer.mkv         # Nested video file
+```
+
+Processing flow:
+1. Folder detected and registered
+2. `movie.mkv` and `extras/trailer.mkv` discovered
+3. Both files undergo stability checks
+4. Jobs submitted as files become stable
+5. After all jobs complete, folder marked complete
+6. Based on `keep_processed_files`:
+   - `true`: Folder renamed to `My.Movie.2024.processed/`
+   - `false`: Entire folder tree deleted
+
+> **Note:** Folders are always scanned recursively for video files. The `recursive` watchfolder setting controls single-file detection in subdirectories (a different feature).
+
+### Temporary File Handling
+
+By default, source files are copied to a temp folder before encoding to protect the original during the encode process.
+
+#### temp_folder
+
+Specifies where to copy source files during encoding:
+
+```yaml
+temp_folder: /fast-ssd/encode-temp
+```
+
+- Default: System temp directory (`/tmp/videotranscode`)
+- Should be on fast storage (SSD preferred)
+- Requires enough space for the largest source file
+
+#### disable_temp_copy
+
+When `true`, encodes directly from the source file without copying:
+
+```yaml
+disable_temp_copy: true
+```
+
+- **Pros**: Faster startup (no copy phase), uses less disk space
+- **Cons**: Source must not change during encoding; slow source storage impacts encode speed
+- Recommended only when source is on reliable, fast storage
 
 ### Important Notes
 
@@ -226,7 +361,6 @@ scan_interval: 30
 stability_scans: 2
 profiles:
   - x265-balanced
-output_mode: destination
 destination: /media/videos/
 ```
 
@@ -246,7 +380,6 @@ file_patterns:
 recursive: true
 profiles:
   - x265-quality
-output_mode: destination
 destination: /media/archive/
 priority: 3
 ```
@@ -266,9 +399,7 @@ file_patterns:
 profiles:
   - x265-quality
   - x265-fast
-output_mode: destination
 destination: /media/encoded/
-create_profile_folders: true
 priority: 5
 ```
 
@@ -290,6 +421,109 @@ For integration with other tools:
 watchfolder_location: /var/spool/videotranscode
 watchfolder_type: command
 scan_interval: 5
+```
+
+### Auto-Delete After Encoding
+
+For fully automated pipelines where source cleanup is desired:
+
+```yaml
+# ~/.config/videotranscode/watchfolders/auto-cleanup.yaml
+watchfolder_location: /media/incoming
+watchfolder_type: media
+scan_interval: 30
+stability_scans: 3
+
+profiles:
+  - x265-balanced
+
+destination: /media/encoded/
+keep_processed_files: false    # DELETE sources after encoding
+
+# Recommended: use temp copy for safety
+disable_temp_copy: false
+temp_folder: /fast-ssd/temp
+```
+
+> **Warning:** With `keep_processed_files: false`:
+> - Source files are permanently deleted after successful encoding
+> - Source folders are completely removed (including non-video files)
+> - Failed encodes leave source as `.failed` (not deleted)
+
+### Folder Drop Processing
+
+Process entire folders as units (e.g., movie folders with video + extras):
+
+```yaml
+# ~/.config/videotranscode/watchfolders/movies.yaml
+watchfolder_location: /media/rips
+watchfolder_type: media
+scan_interval: 30
+stability_scans: 3
+
+allow_folder_drop: true    # Enable folder processing
+recursive: false           # Cannot use both
+
+profiles:
+  - x265-balanced
+
+destination: /media/movies/
+preserve_folder_structure: true   # Keep folder/subfolder structure
+```
+
+Drop a folder:
+```
+/media/rips/My.Movie.2024/
+├── My.Movie.2024.mkv
+└── Extras/
+    └── Trailer.mkv
+```
+
+Output:
+```
+/media/movies/My.Movie.2024/
+├── My.Movie.2024.mkv
+└── Extras/
+    └── Trailer.mkv
+```
+
+### Multi-User Shared Watchfolder
+
+Multiple users drop files in their own subdirectories:
+
+```yaml
+# ~/.config/videotranscode/watchfolders/shared.yaml
+watchfolder_location: /shared/encode-queue
+watchfolder_type: media
+scan_interval: 60
+stability_scans: 2
+
+recursive: true            # Scan user subdirectories for files
+allow_folder_drop: false   # Don't process folders as units
+
+profiles:
+  - x265-balanced
+
+destination: /shared/encoded/
+preserve_folder_structure: true   # Maintain user subdirectory in output
+```
+
+Users drop files:
+```
+/shared/encode-queue/
+├── alice/
+│   └── video1.mkv
+└── bob/
+    └── video2.mkv
+```
+
+Output:
+```
+/shared/encoded/
+├── alice/
+│   └── video1.mkv
+└── bob/
+    └── video2.mkv
 ```
 
 ---

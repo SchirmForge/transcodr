@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Optional
 from concurrent.futures import ThreadPoolExecutor
 
-from .folder_processor import FolderProcessor
+from ..watcher.folder_processor import FolderProcessor
 from .models import (
     EncodingRequest,
     JobInfo,

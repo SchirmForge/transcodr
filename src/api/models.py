@@ -293,6 +293,15 @@ class EncodingRequest(BaseModel):
         stem = source_file.stem
         suffix = source_file.suffix
 
+        # Strip processing markers to get real extension
+        # e.g., "video.mkv.processing" -> stem="video.mkv", suffix=".processing"
+        # We want: stem="video", suffix=".mkv"
+        processing_markers = [".processing", ".processed", ".failed"]
+        if suffix in processing_markers:
+            real_stem = Path(stem)
+            suffix = real_stem.suffix or ".mkv"  # Fallback to .mkv
+            stem = real_stem.stem
+
         # If append_profile_name is enabled, always add profile name
         if self.append_profile_name:
             return f"{stem}_{profile_name}{suffix}"

@@ -23,7 +23,7 @@ from .models import (
     process_encoding_request,
 )
 from .queue import JobQueue
-from .watcher import WatchFolderManager, WatchfolderService
+from ..watcher import WatchFolderManager, WatchfolderService
 from ..config.manager import ConfigManager
 from ..core.hardware import HardwareCapabilities
 from ..profiles.manager import ProfileManager
