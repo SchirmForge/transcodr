@@ -105,9 +105,6 @@ logging:
   dir: null                        # Log directory (null for no file logging)
   rotation: daily                  # Log rotation policy
   per_job_logs: true               # Create separate log file per job
-
-# Hot folder monitoring (optional)
-hot_folders: []
 ```
 
 ### Configuration Sections
@@ -172,232 +169,17 @@ hot_folders: []
   - `size:10MB` - Rotate at 10MB (future feature)
 - **per_job_logs**: Create separate log file per encoding job
 
-#### Hot Folder Monitoring (Legacy)
-
-Hot folders defined in `config.yaml` are a legacy feature. For new setups, use **Watch Folders** (see below).
-
-```yaml
-hot_folders:
-  - path: /media/downloads
-    profile: x265-balanced
-    min_age_seconds: 300
-    recursive: true
-```
-
 ## Watch Folders
 
 Watch folders are configured in separate YAML files in `~/.config/videotranscode/watchfolders/`.
 
 See [Watch Folders Guide](watchfolders.md) for detailed documentation.
 
-### Command Watch Folder
-
-Monitors for YAML command files:
-
-```yaml
-# ~/.config/videotranscode/watchfolders/commands.yaml
-watchfolder_location: /tmp/encode-commands
-watchfolder_type: command
-scan_interval: 5
-```
-
-### Media Watch Folder
-
-Monitors for video files directly:
-
-```yaml
-# ~/.config/videotranscode/watchfolders/downloads.yaml
-watchfolder_location: /home/user/downloads
-watchfolder_type: media
-scan_interval: 10
-stability_scans: 3
-profiles:
-  - x265-balanced
-output_mode: destination
-destination: /media/encoded/
-```
-
-## Encoding Request Parameters
-
-When submitting encoding jobs via CLI or API, these parameters control behavior:
-
-### Output Modes
-
-| Mode | Description |
-|------|-------------|
-| `replace` | Replace original file in-place (with optional backup) |
-| `destination` | Output to separate folder |
-
-### Request Parameters
-
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `source` | string | required | Source file or folder path |
-| `profiles` | list | required | Encoding profile(s) to use |
-| `output_mode` | string | `replace` | `replace` or `destination` |
-| `destination` | string | - | Output folder (required for destination mode) |
-| `recursive` | bool | `true` | Process subdirectories |
-| `file_patterns` | list | `["*.mkv", "*.mp4", ...]` | File patterns to match |
-| `preserve_structure` | bool | `true` | Recreate folder structure in destination |
-| `create_profile_folders` | bool | `false` | Create subfolder per profile |
-| `append_profile_name` | bool | `false` | Add profile name to filename |
-| `delete_source` | bool | `false` | Delete source after successful encoding |
-| `backup` | bool | `true` | Create backup (replace mode only) |
-| `backup_dir` | string | `.originals` | Backup directory |
-| `priority` | int | `5` | Job priority (1-10, 10=highest) |
-| `hardware_accel` | string | `null` | Override hardware acceleration |
-
-### Example Request
-
-```yaml
-mode: encode
-profiles:
-  - x265-balanced
-  - x265-fast
-source: /media/videos/
-output_mode: destination
-destination: /media/encoded/
-preserve_structure: true
-create_profile_folders: true
-append_profile_name: false
-recursive: true
-file_patterns:
-  - "*.mkv"
-  - "*.mp4"
-  - "*.m2ts"
-priority: 5
-```
-
-### Output Organization Examples
-
-**Basic destination mode:**
-```
-Input:  /source/movie.mkv
-Output: /dest/movie.mkv
-```
-
-**With `preserve_structure: true`:**
-```
-Input:  /source/subdir/movie.mkv
-Output: /dest/subdir/movie.mkv
-```
-
-**With `create_profile_folders: true`:**
-```
-Input:  /source/movie.mkv
-Output: /dest/x265-balanced/movie.mkv
-        /dest/x265-fast/movie.mkv
-```
-
-**With `append_profile_name: true`:**
-```
-Input:  /source/movie.mkv
-Output: /dest/movie_x265-balanced.mkv
-        /dest/movie_x265-fast.mkv
-```
-
-**All options combined:**
-```
-Input:  /source/subdir/movie.mkv
-Output: /dest/subdir/x265-balanced/movie_x265-balanced.mkv
-        /dest/subdir/x265-fast/movie_x265-fast.mkv
-```
-
 ## Profiles
 
 Profiles define encoding settings for different use cases.
 
-### Built-in Profiles
-
-Video Transcode includes these built-in profiles:
-
-1. **base-x265.yaml** - Base template for x265 profiles
-2. **x265-fast.yaml** - Fast encoding, larger file sizes
-3. **x265-balanced.yaml** - Balanced speed/quality (recommended)
-4. **x265-quality.yaml** - High quality, slower encoding
-
-### Profile Location
-
-Profiles are loaded from these locations (in order of priority):
-
-1. **User profiles**: `~/.config/videotranscode/profiles/`
-2. **Built-in profiles**: `src/profiles/builtin/` (in source repo)
-
-User profiles override built-in profiles with the same name.
-
-### Creating Custom Profiles
-
-#### Option 1: Copy and Modify
-
-Copy a built-in profile and customize it:
-
-```bash
-cd ~/.config/videotranscode/profiles/
-cp x265-balanced.yaml my-custom-profile.yaml
-nano my-custom-profile.yaml
-```
-
-#### Option 2: Extend Existing Profile
-
-Create a new profile that extends a built-in profile:
-
-```yaml
-name: my-custom-profile
-extends: x265-balanced    # Inherit from x265-balanced
-
-# Override specific settings
-description: "My custom encoding settings"
-
-video:
-  crf: 20                 # Override CRF (lower = better quality)
-
-# All other settings inherited from x265-balanced
-```
-
-#### Option 3: Create from Scratch
-
-Create a completely new profile:
-
-```yaml
-name: my-profile
-description: "My custom profile"
-container: mkv
-
-video:
-  codec: libx265
-  crf: 23
-  preset: medium
-
-audio:
-  copy_streams: true      # Copy audio without re-encoding
-
-# Optional: Hardware acceleration variants
-hardware_variants:
-  vaapi:
-    video:
-      codec: hevc_vaapi
-      hwaccel: vaapi
-      extra_options:
-        qp: "25"
-```
-
-### Profile Examples
-
-See [Profile Examples](profile-examples.md) for more profile configurations.
-
-### Benchmark and Save Optimal Concurrency
-
-After benchmarking, save the optimal concurrency to a profile:
-
-```bash
-# Run benchmark
-python tests/benchmark_concurrency.py x265-balanced 10 10
-
-# If optimal concurrency is 4, save it:
-python tests/save_benchmark_to_profile.py x265-balanced 4
-```
-
-This creates a user profile that overrides the `recommended_concurrency` setting.
+See [Profiles Guide](profiles.md) for detailed documentation.
 
 ## Directory Structure
 
@@ -521,4 +303,5 @@ sudo chown -R $USER:$USER ~/.config/videotranscode/
 
 - [Concurrency Tuning Guide](concurrency-tuning.md) - Optimize concurrent job settings
 - [Architecture](architecture.md) - System architecture and components
-- [Profile Schema](profile-schema.md) - Profile configuration reference
+- [Watch Folders Guide](watchfolders.md) - Watch folders reference
+- [Profiles Guide](profiles.md) - Profile configuration reference

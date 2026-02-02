@@ -3,12 +3,14 @@
 import asyncio
 import logging
 import sqlite3
+import threading
 import uuid
 from datetime import datetime
 from pathlib import Path
 from typing import Optional
 from concurrent.futures import ThreadPoolExecutor
 
+from .folder_processor import FolderProcessor
 from .models import (
     EncodingRequest,
     JobInfo,
@@ -53,12 +55,19 @@ class JobQueue:
         self._running = False
         self._paused = False
         self._lock = asyncio.Lock()
+        self._db_lock = threading.Lock()  # For thread-safe DB writes from worker threads
         self._executor = ThreadPoolExecutor(max_workers=max_concurrent)
         self._active_jobs: dict[str, asyncio.Task] = {}
 
         self._conn: Optional[sqlite3.Connection] = None
         self._profile_manager = ProfileManager()
         self._job_runner = JobRunner(temp_dir=temp_dir)
+
+        # Folder processors for folder sources (continuous monitoring)
+        self._folder_processors: dict[str, FolderProcessor] = {}
+        self._folder_requests: dict[str, EncodingRequest] = {}  # folder_key -> original request
+        self._folder_monitor_tasks: dict[str, asyncio.Task] = {}
+        self._job_to_folder: dict[str, str] = {}  # job_id -> folder_key (for completion tracking)
 
     async def start(self):
         """Start the job queue."""
@@ -166,34 +175,137 @@ class JobQueue:
         """
         Submit encoding request and create jobs.
 
+        For single files: submits immediately.
+        For folders: uses FolderProcessor for stability detection and continuous monitoring.
+
         Args:
             request: Encoding request
+
+        Returns:
+            List of created job IDs (initial batch for folders)
+        """
+        source_path = Path(request.source)
+
+        if source_path.is_file():
+            # Single file - submit immediately
+            return await self._submit_files([source_path], request)
+        elif source_path.is_dir():
+            # Folder - use FolderProcessor for continuous monitoring
+            return await self._submit_folder(source_path, request)
+        else:
+            logger.warning(f"Source path does not exist: {source_path}")
+            return []
+
+    async def _submit_folder(self, folder_path: Path, request: EncodingRequest) -> list[str]:
+        """
+        Submit folder with continuous monitoring using FolderProcessor.
+
+        Files are detected with stability checking, and new files added during
+        encoding are also processed.
+
+        Args:
+            folder_path: Path to folder
+            request: Encoding request
+
+        Returns:
+            List of job IDs for initially ready files
+        """
+        # Create folder processor
+        processor = FolderProcessor(
+            file_patterns=request.file_patterns,
+            stability_scans=2,  # Default stability scans
+            scan_interval=5.0,  # Default scan interval
+            recursive=request.recursive,
+        )
+        folder_key = processor.register_folder(folder_path)
+
+        # Store processor and request for monitoring
+        self._folder_processors[folder_key] = processor
+        self._folder_requests[folder_key] = request
+
+        # Initial scan
+        processor.scan_folder(folder_key)
+
+        # Submit initially ready files
+        job_ids = []
+        for file_path in processor.get_ready_files(folder_key):
+            ids = await self._submit_files([file_path], request, folder_key=folder_key)
+            job_ids.extend(ids)
+            processor.mark_file_submitted(folder_key, file_path)
+
+        # Start background monitoring task
+        monitor_task = asyncio.create_task(self._monitor_folder(folder_key))
+        self._folder_monitor_tasks[folder_key] = monitor_task
+
+        logger.info(
+            f"Folder submitted for processing: {folder_path.name} "
+            f"({len(job_ids)} initial jobs)"
+        )
+        return job_ids
+
+    async def _monitor_folder(self, folder_key: str):
+        """
+        Background task to monitor folder for new files.
+
+        Continues until folder is complete (no pending jobs and no new files).
+        """
+        processor = self._folder_processors.get(folder_key)
+        request = self._folder_requests.get(folder_key)
+
+        if not processor or not request:
+            return
+
+        try:
+            while not processor.is_folder_complete(folder_key):
+                await asyncio.sleep(processor.scan_interval)
+
+                # Re-scan for new files
+                processor.scan_folder(folder_key)
+
+                # Submit newly ready files
+                for file_path in processor.get_ready_files(folder_key):
+                    await self._submit_files([file_path], request, folder_key=folder_key)
+                    processor.mark_file_submitted(folder_key, file_path)
+
+            # Folder complete - get stats before cleanup
+            stats = processor.get_folder_stats(folder_key)
+            folder_path = processor.complete_folder(folder_key)
+
+            logger.info(
+                f"Folder processing complete: {folder_path.name if folder_path else folder_key} "
+                f"({stats.get('completed_jobs', 0)} succeeded, {stats.get('failed_jobs', 0)} failed)"
+            )
+
+        except asyncio.CancelledError:
+            logger.info(f"Folder monitoring cancelled: {folder_key}")
+        except Exception as e:
+            logger.error(f"Error monitoring folder {folder_key}: {e}", exc_info=True)
+        finally:
+            # Cleanup
+            self._folder_processors.pop(folder_key, None)
+            self._folder_requests.pop(folder_key, None)
+            self._folder_monitor_tasks.pop(folder_key, None)
+
+    async def _submit_files(
+        self,
+        files: list[Path],
+        request: EncodingRequest,
+        folder_key: Optional[str] = None
+    ) -> list[str]:
+        """
+        Submit a list of files for encoding.
+
+        Args:
+            files: List of file paths to encode
+            request: Encoding request with profiles and settings
+            folder_key: Optional folder key for tracking
 
         Returns:
             List of created job IDs
         """
         job_ids = []
-        source_path = Path(request.source)
 
-        # Collect files to process
-        files_to_process = []
-
-        if source_path.is_file():
-            files_to_process.append(source_path)
-        elif source_path.is_dir():
-            # Find matching files in directory
-            for pattern in request.file_patterns:
-                if request.recursive:
-                    files_to_process.extend(source_path.rglob(pattern))
-                else:
-                    files_to_process.extend(source_path.glob(pattern))
-
-        if not files_to_process:
-            logger.warning(f"No files found matching patterns in: {source_path}")
-            return []
-
-        # Create jobs for each file and profile combination
-        for file_path in files_to_process:
+        for file_path in files:
             parent_job_id = str(uuid.uuid4()) if len(request.profiles) > 1 else None
 
             for profile_index, profile_name in enumerate(request.profiles):
@@ -237,7 +349,13 @@ class JobQueue:
                     self._conn.commit()
 
                 job_ids.append(job_id)
-                logger.info(f"Created job {job_id}: {file_path.name} -> {profile_name}")
+
+                # Track job-to-folder association for completion handling
+                if folder_key:
+                    self._job_to_folder[job_id] = folder_key
+
+                folder_info = f" (folder: {Path(folder_key).name})" if folder_key else ""
+                logger.info(f"Created job {job_id}: {file_path.name} -> {profile_name}{folder_info}")
 
         return job_ids
 
@@ -302,6 +420,9 @@ class JobQueue:
                 for job_id in list(self._active_jobs.keys()):
                     if self._active_jobs[job_id].done():
                         del self._active_jobs[job_id]
+
+                # Small delay to prevent tight looping if jobs fail quickly
+                await asyncio.sleep(0.1)
 
             except Exception as e:
                 logger.error(f"Error in job processor: {e}", exc_info=True)
@@ -389,21 +510,22 @@ class JobQueue:
     def _sync_update_progress(self, job_id: str, job: Job):
         """Synchronously update job progress (called from thread)."""
         try:
-            self._conn.execute("""
-                UPDATE jobs SET
-                    progress = ?,
-                    fps = ?,
-                    frames_processed = ?,
-                    frames_total = ?
-                WHERE id = ?
-            """, (
-                job.progress_percent,
-                job.current_fps,
-                job.frames_processed,
-                job.frames_total,
-                job_id,
-            ))
-            self._conn.commit()
+            with self._db_lock:
+                self._conn.execute("""
+                    UPDATE jobs SET
+                        progress = ?,
+                        fps = ?,
+                        frames_processed = ?,
+                        frames_total = ?
+                    WHERE id = ?
+                """, (
+                    job.progress_percent,
+                    job.current_fps,
+                    job.frames_processed,
+                    job.frames_total,
+                    job_id,
+                ))
+                self._conn.commit()
         except Exception as e:
             logger.warning(f"Failed to update progress for {job_id}: {e}")
 
@@ -442,6 +564,9 @@ class JobQueue:
             self._conn.commit()
             logger.info(f"Job completed: {job_id}")
 
+        # Notify folder processor if job belongs to a folder
+        self._notify_folder_job_complete(job_id, success=True)
+
     async def _update_job_failed(self, job_id: str, error: str):
         """Update job as failed."""
         async with self._lock:
@@ -459,6 +584,17 @@ class JobQueue:
             ))
             self._conn.commit()
             logger.error(f"Job failed: {job_id} - {error}")
+
+        # Notify folder processor if job belongs to a folder
+        self._notify_folder_job_complete(job_id, success=False)
+
+    def _notify_folder_job_complete(self, job_id: str, success: bool):
+        """Notify folder processor that a job has completed."""
+        folder_key = self._job_to_folder.pop(job_id, None)
+        if folder_key:
+            processor = self._folder_processors.get(folder_key)
+            if processor:
+                processor.mark_job_completed(folder_key, success=success)
 
     async def get_job(self, job_id: str) -> Optional[JobInfo]:
         """Get job by ID."""

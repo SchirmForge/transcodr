@@ -11,6 +11,7 @@ from fnmatch import fnmatch
 from pathlib import Path
 from typing import Optional
 
+from .folder_processor import FolderProcessor
 from .models import EncodingRequest, OutputMode, WatchFolderInfo, process_encoding_request
 from .queue import JobQueue
 
@@ -433,6 +434,7 @@ class SubmittedJob:
     temp_source: Optional[Path]  # Temp copy of source (if temp copy enabled)
     job_ids: list[str]
     submitted_at: float
+    folder_key: Optional[str] = None  # Track which folder this file belongs to
 
 
 class MediaFileWatcher:
@@ -464,6 +466,15 @@ class MediaFileWatcher:
         self._pending_files: dict[str, PendingFile] = {}
         self._submitted_jobs: dict[str, SubmittedJob] = {}  # path -> submitted job info
         self._failed_files: set[str] = set()  # Files that failed validation (won't retry)
+
+        # Folder processor for dropped folders
+        self._folder_processor = FolderProcessor(
+            file_patterns=config.file_patterns,
+            stability_scans=config.stability_scans,
+            scan_interval=config.scan_interval,
+            recursive=True,  # Always recursive for dropped folders
+        )
+        self._active_folder_keys: set[str] = set()  # Currently processing folders
 
     async def start(self):
         """Start watching for media files."""
@@ -575,20 +586,67 @@ class MediaFileWatcher:
         if not self.watch_path.exists():
             return
 
-        if self.config.recursive:
-            scan_iter = self.watch_path.rglob("*")
-        else:
-            scan_iter = self.watch_path.glob("*")
-
-        for file_path in scan_iter:
-            if not file_path.is_file():
+        # First pass: check top-level items for folders and direct files
+        for item_path in self.watch_path.iterdir():
+            # Skip items with processing markers
+            if any(item_path.name.endswith(suffix) for suffix in [".processing", ".processed", ".failed"]):
                 continue
 
-            if not self._matches_pattern(file_path.name):
-                continue
+            if item_path.is_dir():
+                # Folder dropped - register with FolderProcessor
+                if not self._folder_processor.is_registered(item_path):
+                    folder_key = self._folder_processor.register_folder(item_path)
+                    self._active_folder_keys.add(folder_key)
+            elif item_path.is_file():
+                # Direct file in watch folder - use existing logic
+                if self._matches_pattern(item_path.name):
+                    if self._is_file_ready(item_path):
+                        await self._submit_job(item_path)
 
-            if self._is_file_ready(file_path):
-                await self._submit_job(file_path)
+        # Second pass: process registered folders
+        for folder_key in list(self._active_folder_keys):
+            await self._process_folder(folder_key)
+
+    async def _process_folder(self, folder_key: str):
+        """Process a folder registered with FolderProcessor."""
+        # Scan for new files
+        self._folder_processor.scan_folder(folder_key)
+
+        # Submit ready files
+        for file_path in self._folder_processor.get_ready_files(folder_key):
+            await self._submit_folder_file(folder_key, file_path)
+
+        # Check if folder is complete
+        if self._folder_processor.is_folder_complete(folder_key):
+            await self._complete_folder(folder_key)
+
+    async def _submit_folder_file(self, folder_key: str, file_path: Path):
+        """Submit a file from a folder for encoding."""
+        # Mark as submitted in folder processor before actual submission
+        self._folder_processor.mark_file_submitted(folder_key, file_path)
+
+        # Use existing submit logic with folder_key tracking
+        await self._submit_job(file_path, folder_key=folder_key)
+
+    async def _complete_folder(self, folder_key: str):
+        """Handle completed folder - rename to .processed or delete based on config."""
+        folder_path = self._folder_processor.complete_folder(folder_key)
+        self._active_folder_keys.discard(folder_key)
+
+        if folder_path and folder_path.exists():
+            try:
+                if self.config.keep_processed_files:
+                    # Rename folder to .processed
+                    processed_path = folder_path.with_name(folder_path.name + ".processed")
+                    folder_path.rename(processed_path)
+                    logger.info(f"Media watcher: folder complete: {folder_path.name} → {processed_path.name}")
+                else:
+                    # Delete entire folder tree
+                    import shutil
+                    shutil.rmtree(folder_path)
+                    logger.info(f"Media watcher: folder deleted: {folder_path.name}")
+            except Exception as e:
+                logger.warning(f"Media watcher: failed to handle folder {folder_path.name}: {e}")
 
     def _get_temp_folder(self) -> Path:
         """Get temp folder for source copy and encoding workspace."""
@@ -600,9 +658,13 @@ class MediaFileWatcher:
         temp_folder.mkdir(parents=True, exist_ok=True)
         return temp_folder
 
-    async def _submit_job(self, file_path: Path):
+    async def _submit_job(self, file_path: Path, folder_key: Optional[str] = None):
         """
         Submit encoding job for a ready file.
+
+        Args:
+            file_path: Path to the file to encode
+            folder_key: Optional folder key if this file belongs to a dropped folder
 
         Workflow:
         1. Copy source to temp folder (unless disable_temp_copy=True)
@@ -683,10 +745,12 @@ class MediaFileWatcher:
                 temp_source=temp_source,
                 job_ids=job_ids,
                 submitted_at=time.time(),
+                folder_key=folder_key,
             )
             self._pending_files.pop(path_str, None)
+            folder_info = f" (folder: {Path(folder_key).name})" if folder_key else ""
             logger.info(
-                f"Media watcher: submitted {len(job_ids)} job(s) for {file_path.name} "
+                f"Media watcher: submitted {len(job_ids)} job(s) for {file_path.name}{folder_info} "
                 f"(temp_copy={'disabled' if self.config.disable_temp_copy else 'enabled'})"
             )
         else:
@@ -731,6 +795,13 @@ class MediaFileWatcher:
                 completed_paths.append(path_str)
                 # Handle source file based on outcome
                 self._handle_completed_job(submitted, failed=any_failed)
+
+                # Update folder processor if this file belonged to a folder
+                if submitted.folder_key:
+                    self._folder_processor.mark_job_completed(
+                        submitted.folder_key,
+                        success=not any_failed
+                    )
 
         # Remove completed entries
         for path_str in completed_paths:
