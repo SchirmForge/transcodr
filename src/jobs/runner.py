@@ -35,6 +35,7 @@ class JobRunner:
         profile_manager: Optional[ProfileManager] = None,
         temp_dir: Optional[Path] = None,
         backup_originals: bool = True,
+        duration_tolerance_seconds: float = 5.0,
     ):
         """
         Initialize job runner.
@@ -56,6 +57,8 @@ class JobRunner:
             backup_originals=backup_originals,
             temp_dir=self.temp_dir,
         )
+
+        self.duration_tolerance_seconds = duration_tolerance_seconds
 
         self.hardware_caps = HardwareCapabilities()
 
@@ -122,6 +125,11 @@ class JobRunner:
 
             # Load profile
             profile = self.profile_manager.load_profile(job.profile_name)
+            expected_duration = None
+            if profile.duration:
+                expected_duration = self._parse_duration_to_seconds(profile.duration)
+                if expected_duration is None:
+                    logger.warning(f"Invalid profile duration format: {profile.duration}")
 
             # Build FFmpeg arguments (use temp source for multi-profile)
             ffmpeg_args = profile.to_ffmpeg_args(
@@ -160,7 +168,11 @@ class JobRunner:
             job.state = JobState.VALIDATING_OUTPUT
             if progress_callback:
                 progress_callback(job)
-            self._validate_output(job, source_for_encoding)
+            self._validate_output(
+                job,
+                source_for_encoding,
+                expected_duration=expected_duration,
+            )
 
             # Handle output placement
             job.state = JobState.REPLACING
@@ -287,7 +299,43 @@ class JobRunner:
 
         logger.debug(f"Temp path: {job.temp_path}")
 
-    def _validate_output(self, job: Job, source_for_comparison: Optional[Path] = None):
+    @staticmethod
+    def _parse_duration_to_seconds(duration: str) -> Optional[float]:
+        if duration is None:
+            return None
+        if isinstance(duration, (int, float)):
+            return float(duration)
+        if not isinstance(duration, str):
+            return None
+        text = duration.strip()
+        if not text:
+            return None
+        try:
+            if ":" in text:
+                parts = [p.strip() for p in text.split(":")]
+                if len(parts) > 3:
+                    return None
+                values = [float(p) for p in parts]
+                if len(values) == 3:
+                    hours, minutes, seconds = values
+                elif len(values) == 2:
+                    hours = 0.0
+                    minutes, seconds = values
+                else:
+                    hours = 0.0
+                    minutes = 0.0
+                    seconds = values[0]
+                return hours * 3600 + minutes * 60 + seconds
+            return float(text)
+        except ValueError:
+            return None
+
+    def _validate_output(
+        self,
+        job: Job,
+        source_for_comparison: Optional[Path] = None,
+        expected_duration: Optional[float] = None,
+    ):
         """Validate encoded output file."""
         logger.debug("Validating encoded output")
 
@@ -298,9 +346,11 @@ class JobRunner:
             raise ValidationError("Encoded file is not a valid video")
 
         # Get output metadata
+        output_duration = None
         try:
             job.output_size_bytes = job.temp_path.stat().st_size
             info = self.probe.get_info(job.temp_path)
+            output_duration = info.duration
             video_stream = info.get_primary_video_stream()
             if video_stream:
                 job.output_codec = video_stream.codec_name
@@ -313,16 +363,28 @@ class JobRunner:
         except Exception as e:
             logger.warning(f"Failed to get output metadata: {e}")
 
-        # Compare durations (use the actual source that was encoded)
-        compare_source = source_for_comparison or job.source_path
-        if not self.probe.compare_durations(compare_source, job.temp_path, tolerance_percent=1.0):
-            orig_duration = self.probe.get_duration(compare_source)
-            enc_duration = self.probe.get_duration(job.temp_path)
-            diff_percent = abs(orig_duration - enc_duration) / orig_duration * 100 if orig_duration > 0 else 100
-            raise ValidationError(
-                f"Duration mismatch: source={orig_duration:.1f}s, "
-                f"encoded={enc_duration:.1f}s (diff={diff_percent:.2f}%)"
-            )
+        # Compare durations (use expected duration for extract profiles)
+        if expected_duration is not None and expected_duration > 0:
+            if output_duration is None:
+                output_duration = self.probe.get_duration(job.temp_path)
+            diff_seconds = abs(expected_duration - output_duration)
+            tolerance_seconds = max(expected_duration * 0.01, self.duration_tolerance_seconds)
+            if diff_seconds > tolerance_seconds:
+                raise ValidationError(
+                    f"Duration mismatch: expected={expected_duration:.1f}s, "
+                    f"encoded={output_duration:.1f}s (diff={diff_seconds:.1f}s, "
+                    f"tol={tolerance_seconds:.1f}s)"
+                )
+        else:
+            compare_source = source_for_comparison or job.source_path
+            if not self.probe.compare_durations(compare_source, job.temp_path, tolerance_percent=1.0):
+                orig_duration = self.probe.get_duration(compare_source)
+                enc_duration = self.probe.get_duration(job.temp_path)
+                diff_percent = abs(orig_duration - enc_duration) / orig_duration * 100 if orig_duration > 0 else 100
+                raise ValidationError(
+                    f"Duration mismatch: source={orig_duration:.1f}s, "
+                    f"encoded={enc_duration:.1f}s (diff={diff_percent:.2f}%)"
+                )
 
         logger.debug("Output validation passed")
 

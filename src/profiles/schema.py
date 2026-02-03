@@ -7,7 +7,12 @@ from pydantic import BaseModel, Field
 class VideoSettings(BaseModel):
     """Video encoding settings."""
 
-    codec: str = Field(description="Video codec (e.g., libx265, h264_vaapi)")
+    copy_streams: bool = Field(
+        default=False,
+        description="Copy video stream without re-encoding",
+        alias="copy"
+    )
+    codec: Optional[str] = Field(default=None, description="Video codec (e.g., libx265, h264_vaapi)")
     crf: Optional[int] = Field(default=None, description="Constant Rate Factor (for CRF mode)")
     bitrate: Optional[str] = Field(default=None, description="Target bitrate (e.g., '5M', '2000k')")
     preset: Optional[str] = Field(default=None, description="Encoding preset (e.g., slow, medium, fast)")
@@ -27,6 +32,8 @@ class VideoSettings(BaseModel):
         default_factory=dict,
         description="Additional FFmpeg options as key-value pairs"
     )
+
+    model_config = {"populate_by_name": True}  # Allow both 'copy' and 'copy_streams'
 
 
 class AudioSettings(BaseModel):
@@ -83,6 +90,16 @@ class Profile(BaseModel):
     audio: AudioSettings = Field(default_factory=AudioSettings)
     subtitles: SubtitleSettings = Field(default_factory=SubtitleSettings)
 
+    # Time-based extraction
+    start_time: Optional[str] = Field(
+        default=None,
+        description="Start time for extraction (FFmpeg -ss format, e.g., '00:03:00' or '180')"
+    )
+    duration: Optional[str] = Field(
+        default=None,
+        description="Duration to extract (FFmpeg -t format, e.g., '00:03:00' or '180')"
+    )
+
     # Hardware variants (optional)
     hardware_variants: Optional[dict[str, HardwareVariant]] = Field(
         default=None,
@@ -117,18 +134,35 @@ class Profile(BaseModel):
 
         Returns:
             List of FFmpeg arguments
+
+        Note:
+            For time-based extraction with stream copy:
+            ffmpeg -ss <start> -i <input> -t <duration> -c:v copy ...
+            -ss before -i enables fast input seeking (keyframe-based)
         """
         args = []
 
         # Select video settings (hardware variant or default)
         video_settings = self.video
-        if hardware_accel and self.hardware_variants:
+
+        # Determine if we're doing stream copy (no encoding)
+        is_video_copy = video_settings.copy_streams
+
+        # For stream copy, skip hardware variants (not needed for copying)
+        if not is_video_copy and hardware_accel and self.hardware_variants:
             variant = self.hardware_variants.get(hardware_accel)
             if variant:
                 video_settings = variant.video
+                # Re-check copy mode from variant
+                is_video_copy = video_settings.copy_streams
 
-        # Hardware acceleration (MUST be before -i for decode acceleration)
-        if video_settings.hwaccel:
+        # Start time (BEFORE input for fast seeking)
+        if self.start_time:
+            args.extend(["-ss", self.start_time])
+
+        # Hardware acceleration (only if NOT doing stream copy)
+        # Must be before -i for decode acceleration
+        if not is_video_copy and video_settings.hwaccel:
             args.extend(["-hwaccel", video_settings.hwaccel])
             if video_settings.hwaccel_device:
                 args.extend(["-hwaccel_device", video_settings.hwaccel_device])
@@ -136,37 +170,47 @@ class Profile(BaseModel):
         # Input file
         args.extend(["-i", input_path])
 
-        # VAAPI requires video filter to upload frames to GPU
-        if video_settings.hwaccel == "vaapi" and "vaapi" in video_settings.codec.lower():
-            args.extend(["-vf", "format=nv12,hwupload"])
+        # Duration (AFTER input)
+        if self.duration:
+            args.extend(["-t", self.duration])
 
-        # Video codec
-        args.extend(["-c:v", video_settings.codec])
+        # Video settings
+        if is_video_copy:
+            # Stream copy mode - no encoding
+            args.extend(["-c:v", "copy"])
+        else:
+            # VAAPI requires video filter to upload frames to GPU
+            if video_settings.hwaccel == "vaapi" and video_settings.codec and "vaapi" in video_settings.codec.lower():
+                args.extend(["-vf", "format=nv12,hwupload"])
 
-        # Video encoding parameters
-        if video_settings.crf is not None:
-            args.extend(["-crf", str(video_settings.crf)])
-        if video_settings.bitrate:
-            args.extend(["-b:v", video_settings.bitrate])
-        if video_settings.preset:
-            args.extend(["-preset", video_settings.preset])
-        # Don't set pix_fmt for hardware encoders (they handle it internally)
-        if video_settings.pix_fmt and video_settings.hwaccel is None:
-            args.extend(["-pix_fmt", video_settings.pix_fmt])
-        if video_settings.tune:
-            args.extend(["-tune", video_settings.tune])
-        if video_settings.profile:
-            args.extend(["-profile:v", video_settings.profile])
-        if video_settings.level:
-            args.extend(["-level:v", video_settings.level])
-        if video_settings.max_bitrate:
-            args.extend(["-maxrate", video_settings.max_bitrate])
-        if video_settings.bufsize:
-            args.extend(["-bufsize", video_settings.bufsize])
+            # Video codec (required when not copying)
+            if video_settings.codec:
+                args.extend(["-c:v", video_settings.codec])
 
-        # Video extra options
-        for key, value in video_settings.extra_options.items():
-            args.extend([f"-{key}", value])
+            # Video encoding parameters (only apply when encoding)
+            if video_settings.crf is not None:
+                args.extend(["-crf", str(video_settings.crf)])
+            if video_settings.bitrate:
+                args.extend(["-b:v", video_settings.bitrate])
+            if video_settings.preset:
+                args.extend(["-preset", video_settings.preset])
+            # Don't set pix_fmt for hardware encoders (they handle it internally)
+            if video_settings.pix_fmt and video_settings.hwaccel is None:
+                args.extend(["-pix_fmt", video_settings.pix_fmt])
+            if video_settings.tune:
+                args.extend(["-tune", video_settings.tune])
+            if video_settings.profile:
+                args.extend(["-profile:v", video_settings.profile])
+            if video_settings.level:
+                args.extend(["-level:v", video_settings.level])
+            if video_settings.max_bitrate:
+                args.extend(["-maxrate", video_settings.max_bitrate])
+            if video_settings.bufsize:
+                args.extend(["-bufsize", video_settings.bufsize])
+
+            # Video extra options
+            for key, value in video_settings.extra_options.items():
+                args.extend([f"-{key}", value])
 
         # Audio settings
         if self.audio.copy_streams:

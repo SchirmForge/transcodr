@@ -1,0 +1,57 @@
+# Watchfolder: Extract Multiple Video Samples
+#
+# This watchfolder extracts 5 x 3-minute samples from each dropped video:
+#   - extract-3m-at-3:  Starting at 3 minutes (post-intro)
+#   - extract-3m-at-15: Starting at 15 minutes (early content)
+#   - extract-3m-at-30: Starting at 30 minutes (mid content)
+#   - extract-3m-at-60: Starting at 1 hour (late content)
+#   - extract-3m-at-90: Starting at 1.5 hours (near-end)
+#
+# Use cases:
+#   - Quick quality preview of long videos
+#   - Create test clips for encoding experiments
+#   - Sample extraction for review before full encoding
+#
+# Output naming (with append_profile_name: true):
+#   movie.mkv -> movie_extract-3m-at-3.mkv
+#                movie_extract-3m-at-15.mkv
+#                movie_extract-3m-at-30.mkv
+#                movie_extract-3m-at-60.mkv
+#                movie_extract-3m-at-90.mkv
+#
+# Installation:
+#   1. Customize paths below
+#   2. Copy to ~/.config/videotranscode/watchfolders/extract-samples.yaml
+#   3. Restart daemon or wait for config reload
+
+watchfolder_location: /media/extract-input/
+watchfolder_type: media
+
+# Extract profiles (stream copy - instant, no quality loss)
+profiles:
+  - extract-3m-at-3
+  - extract-3m-at-15
+  - extract-3m-at-30
+  - extract-3m-at-60
+  - extract-3m-at-90
+
+# Output location
+destination: /media/extracted-samples/
+
+# Add profile name to ALL output files (important for multi-profile)
+append_profile_name: true
+
+# File detection
+scan_interval: 5.0
+stability_scans: 2
+file_patterns:
+  - "*.mkv"
+  - "*.mp4"
+  - "*.avi"
+  - "*.mov"
+
+# Keep source files after extraction
+keep_processed_files: true
+
+# Higher priority (extract is fast)
+priority: 7

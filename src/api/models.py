@@ -278,7 +278,13 @@ class EncodingRequest(BaseModel):
 
         return issues
 
-    def get_output_filename(self, source_file: Path, profile_name: str, profile_index: int) -> str:
+    def get_output_filename(
+        self,
+        source_file: Path,
+        profile_name: str,
+        profile_index: int,
+        container: Optional[str] = None,
+    ) -> str:
         """
         Generate output filename based on profile position and settings.
 
@@ -301,6 +307,10 @@ class EncodingRequest(BaseModel):
             real_stem = Path(stem)
             suffix = real_stem.suffix or ".mkv"  # Fallback to .mkv
             stem = real_stem.stem
+
+        # Override extension if container is specified
+        if container:
+            suffix = f".{container.lstrip('.')}"
 
         # If append_profile_name is enabled, always add profile name
         if self.append_profile_name:

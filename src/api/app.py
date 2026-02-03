@@ -60,6 +60,7 @@ async def lifespan(app: FastAPI):
         max_concurrent=_config.daemon.max_concurrent_jobs,
         db_path=_config.get_jobs_db_path(),
         temp_dir=_config.storage.temp_dir,
+        duration_tolerance_seconds=_config.validation.duration_tolerance,
     )
     await _job_queue.start()
     logger.info(f"Job queue started (max concurrent: {_config.daemon.max_concurrent_jobs}, temp: {_config.storage.temp_dir})")

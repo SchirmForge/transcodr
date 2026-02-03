@@ -751,6 +751,7 @@ class MediaFileWatcher:
             backup=False,  # We handle source file ourselves
             hardware_accel=self.config.hardware_accel,
             priority=self.config.priority,
+            append_profile_name=self.config.append_profile_name,
         )
 
         # Validate request

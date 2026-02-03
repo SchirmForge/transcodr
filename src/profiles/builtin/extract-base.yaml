@@ -1,0 +1,22 @@
+# Base Extract Profile
+# Fast stream copy extraction - no re-encoding
+# Used as a base for time-specific extract profiles
+
+name: extract-base
+description: Base profile for fast stream copy extraction (no re-encoding)
+
+container: mkv
+
+video:
+  copy: true  # Stream copy - no encoding
+
+audio:
+  copy: true
+
+subtitles:
+  copy: true
+
+tags:
+  - extract
+  - stream-copy
+  - fast

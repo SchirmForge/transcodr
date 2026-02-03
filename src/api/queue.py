@@ -40,6 +40,7 @@ class JobQueue:
         max_concurrent: int = 1,
         db_path: Optional[Path] = None,
         temp_dir: Optional[Path] = None,
+        duration_tolerance_seconds: float = 5.0,
     ):
         """
         Initialize job queue.
@@ -61,7 +62,10 @@ class JobQueue:
 
         self._conn: Optional[sqlite3.Connection] = None
         self._profile_manager = ProfileManager()
-        self._job_runner = JobRunner(temp_dir=temp_dir)
+        self._job_runner = JobRunner(
+            temp_dir=temp_dir,
+            duration_tolerance_seconds=duration_tolerance_seconds,
+        )
 
         # Folder processors for folder sources (continuous monitoring)
         self._folder_processors: dict[str, FolderProcessor] = {}
@@ -367,7 +371,19 @@ class JobQueue:
         profile_index: int,
     ) -> Optional[Path]:
         """Determine output path for a job."""
-        output_filename = request.get_output_filename(source_file, profile_name, profile_index)
+        container = None
+        try:
+            profile = self._profile_manager.load_profile(profile_name)
+            container = profile.container
+        except Exception as e:
+            logger.warning(f"Failed to load profile '{profile_name}' for container: {e}")
+
+        output_filename = request.get_output_filename(
+            source_file,
+            profile_name,
+            profile_index,
+            container=container,
+        )
 
         if request.output_mode == OutputMode.REPLACE:
             # Replace in-place (output goes to temp, then replaces original)

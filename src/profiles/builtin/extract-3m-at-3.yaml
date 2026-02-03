@@ -1,0 +1,16 @@
+# Extract 3 minutes starting at 3 minutes
+# Use case: Test sample after intro/credits
+
+name: extract-3m-at-3
+description: Extract 3-minute sample starting at 3 minutes (post-intro test clip)
+
+extends: extract-base
+
+start_time: "00:03:00"
+duration: "00:03:00"
+
+tags:
+  - extract
+  - stream-copy
+  - fast
+  - sample

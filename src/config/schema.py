@@ -97,6 +97,16 @@ class LoggingConfig(BaseModel):
         return v_upper
 
 
+class ValidationConfig(BaseModel):
+    """Validation configuration."""
+
+    duration_tolerance: float = Field(
+        default=5.0,
+        ge=0,
+        description="Minimum absolute duration tolerance for extracted clips (seconds)",
+    )
+
+
 class HotFolderConfig(BaseModel):
     """Hot folder monitoring configuration."""
 
@@ -117,6 +127,7 @@ class Config(BaseModel):
     daemon: DaemonConfig = Field(default_factory=DaemonConfig)
     storage: StorageConfig = Field(default_factory=StorageConfig)
     logging: LoggingConfig = Field(default_factory=LoggingConfig)
+    validation: ValidationConfig = Field(default_factory=ValidationConfig)
     hot_folders: list[HotFolderConfig] = Field(
         default_factory=list, description="Hot folder configurations"
     )

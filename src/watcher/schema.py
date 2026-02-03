@@ -89,6 +89,10 @@ class WatchfolderConfig(BaseModel):
         default=True,
         description="Preserve folder structure from source to destination"
     )
+    append_profile_name: bool = Field(
+        default=False,
+        description="Always add profile name to output filename (useful for multi-profile extracts)"
+    )
 
     @model_validator(mode='after')
     def validate_folder_options(self) -> 'WatchfolderConfig':
