@@ -93,11 +93,11 @@ Submit a new encoding job.
 ```json
 {
   "request": {
-    "mode": "encode",
     "profiles": ["x265-balanced", "x265-fast"],
     "source": "/media/videos/movie.mkv",
     "output_mode": "destination",
     "destination": "/media/encoded/",
+    "use_profile_destination": false,
     "preserve_structure": true,
     "create_profile_folders": false,
     "append_profile_name": false,
@@ -106,6 +106,7 @@ Submit a new encoding job.
     "recursive": false,
     "file_patterns": ["*.mkv", "*.mp4"],
     "priority": 5,
+    "max_concurrent_jobs": null,
     "hardware_accel": null
   }
 }
@@ -115,13 +116,13 @@ Submit a new encoding job.
 
 | Field | Type | Required | Default | Description |
 |-------|------|----------|---------|-------------|
-| `mode` | string | No | `encode` | `encode` or `watch` |
 | `profiles` | array | Yes | - | List of profile names |
 | `source` | string | Yes | - | Source file or folder path |
 | `output_mode` | string | No | `replace` | `replace` or `destination` |
-| `destination` | string | Conditional | - | Required if output_mode is `destination` |
+| `destination` | string | Conditional | - | Required if output_mode is `destination` and `use_profile_destination` is false |
+| `use_profile_destination` | bool | No | `false` | Use each profile's `destination` field instead of a single folder |
 | `preserve_structure` | bool | No | `true` | Recreate folder structure in destination |
-| `create_profile_folders` | bool | No | `false` | Create subfolder per profile |
+| `create_profile_folders` | bool | No | `false` | Create subfolder per profile (mutually exclusive with `use_profile_destination`) |
 | `append_profile_name` | bool | No | `false` | Add profile name to filename |
 | `delete_source` | bool | No | `false` | Delete source after encoding |
 | `backup` | bool | No | `true` | Create backup (replace mode only) |
@@ -129,6 +130,7 @@ Submit a new encoding job.
 | `recursive` | bool | No | `true` | Process subdirectories |
 | `file_patterns` | array | No | `["*.mkv", "*.mp4", ...]` | File patterns to match |
 | `priority` | int | No | `5` | Priority 1-10 (10 = highest) |
+| `max_concurrent_jobs` | int | No | `null` | Max concurrent jobs for this request |
 | `hardware_accel` | string | No | `null` | Override hardware acceleration |
 
 **Response:**
@@ -310,8 +312,8 @@ List all watchfolders (config-based and API-registered).
       "active": true,
       "paused": false,
       "profiles": ["x265-balanced"],
-      "output_mode": "destination",
-      "destination": "/media/encoded/"
+      "destination": "/media/encoded/",
+      "use_profile_destination": false
     }
   ],
   "total": 2

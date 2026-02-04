@@ -127,9 +127,9 @@
 ### Profile-Level Destinations
 - [x] Profile `destination:` field for absolute output path
 - [x] Path placeholder support (`$root_media`, `~`, `$HOME`)
-- [x] `destination: profile` directive for commands/watchfolders
+- [x] `use_profile_destination: true` for commands/watchfolders
 - [x] Validation that profile destination directory exists
-- [x] `create_profile_folders` cannot be mixed with `destination: profile`
+- [x] `create_profile_folders` cannot be mixed with `use_profile_destination`
 
 ### Concurrency Control
 - [x] Per-command/watchfolder `max_concurrent_jobs` limit
@@ -195,7 +195,6 @@
 
 ## Open Bugs / Risks
 
-- Watchfolder should not start if a referenced profile is missing
 - Validate file duration for extract profiles; only create jobs that fit
 - When the runner throws an exception, mark file as `.failed` (not `.processing`)
 - Catch and log runner exceptions consistently
@@ -216,7 +215,7 @@
 - Distributed encoding (0.3.2)
 - Video filters (0.3.3)
 
-### v0.2 (In Progress)
+### v0.2 (Current - v0.2.3 Released)
 - ✅ Watch folder improvements (0.2.1) - **DONE**
 - ✅ Extract profiles and stream mapping (0.2.2) - **DONE**
 - ✅ Profile/job parameters (0.2.3) - **DONE**
@@ -227,7 +226,7 @@
 
 ### v0.2.3 (Current)
 - Profile-level `destination:` with path placeholder support
-- `destination: profile` directive for commands/watchfolders
+- `use_profile_destination: true` for commands/watchfolders
 - Per-source `max_concurrent_jobs` concurrency limits
 - Configurable `profile_name_separator` in config
 

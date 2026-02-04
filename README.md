@@ -20,7 +20,7 @@ A robust, production-ready video transcoding system with daemon, CLI, and API in
 
 **Profile-Level Destinations**
 - Profiles can define their own `destination:` folder (absolute path)
-- Use `destination: profile` in commands/watchfolders to output to each profile's folder
+- Use `use_profile_destination: true` in commands/watchfolders to output to each profile's folder
 - Supports path placeholders (`$root_media`, `~`, `$HOME`)
 - Validation ensures profile destination directories exist
 
@@ -174,7 +174,8 @@ python -m src.cli.client profiles
 | `source` | Source file or folder path |
 | `profiles` | List of encoding profiles |
 | `output_mode` | `replace` or `destination` |
-| `destination` | Output folder, or `profile` to use each profile's destination |
+| `destination` | Output folder (required for destination mode unless use_profile_destination is set) |
+| `use_profile_destination` | Use each profile's destination field instead of a single folder |
 | `recursive` | Process subdirectories |
 | `preserve_structure` | Recreate folder structure in destination |
 | `create_profile_folders` | Create subfolder per profile (e.g., `dest/x265-balanced/`) |
@@ -188,7 +189,6 @@ python -m src.cli.client profiles
 
 ```yaml
 # encoding-request.yaml
-mode: encode
 profiles:
   - x265-balanced
   - x265-fast

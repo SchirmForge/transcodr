@@ -382,7 +382,6 @@ For complex encoding requests, use a YAML file with `--file`:
 
 ```yaml
 # encoding-request.yaml
-mode: encode
 profiles:
   - x265-balanced
   - x265-fast

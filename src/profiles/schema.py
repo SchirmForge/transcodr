@@ -131,7 +131,7 @@ class Profile(BaseModel):
     # Output organization
     destination: Optional[str] = Field(
         default=None,
-        description="Absolute output folder path (used when request has destination: profile)"
+        description="Absolute output folder path (used when request has use_profile_destination: true)"
     )
 
     def to_ffmpeg_args(

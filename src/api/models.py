@@ -131,7 +131,11 @@ class EncodingRequest(BaseModel):
     )
     destination: Optional[str] = Field(
         default=None,
-        description="Destination folder (required if output_mode is 'destination')"
+        description="Destination folder (required if output_mode is 'destination' and use_profile_destination is false)"
+    )
+    use_profile_destination: bool = Field(
+        default=False,
+        description="Use each profile's destination field instead of a single destination folder"
     )
     preserve_structure: bool = Field(
         default=True,
@@ -252,11 +256,17 @@ class EncodingRequest(BaseModel):
 
     @model_validator(mode='after')
     def validate_destination_profile(self):
-        """Validate destination: profile cannot be mixed with create_profile_folders."""
-        if self.destination == "profile" and self.create_profile_folders:
+        """Validate use_profile_destination options."""
+        if self.use_profile_destination and self.create_profile_folders:
             raise ValueError(
-                "Cannot use 'destination: profile' with create_profile_folders=true. "
+                "Cannot use use_profile_destination with create_profile_folders=true. "
                 "Use one or the other."
+            )
+        if self.use_profile_destination and self.destination:
+            raise ValueError(
+                "use_profile_destination and destination are mutually exclusive. "
+                "Use use_profile_destination to output to each profile's destination, "
+                "or specify a single destination folder."
             )
         return self
 

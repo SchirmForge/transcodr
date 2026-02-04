@@ -96,7 +96,7 @@ Profiles are defined in YAML with the following structure:
 | `hardware_variants` | object | No | null | Hardware-specific overrides |
 | `recommended_concurrency` | int | No | null | Optimal concurrent jobs for this profile |
 | `tags` | list | No | `[]` | Categorization tags |
-| `destination` | string | No | null | Absolute output path (used with `destination: profile` in requests) |
+| `destination` | string | No | null | Absolute output path (used with `use_profile_destination: true` in requests) |
 
 ### Video Settings (`video:`)
 
@@ -242,7 +242,7 @@ destination: $root_media/streaming  # Uses root_media from config
 
 ### Using Profile Destinations
 
-To use profile destinations, set `destination: profile` in your command or watchfolder:
+To use profile destinations, set `use_profile_destination: true` in your command or watchfolder:
 
 ```yaml
 # Command file
@@ -250,7 +250,7 @@ profiles:
   - x265-archival     # destination: /media/archive
   - x265-streaming    # destination: /media/streaming
 source: /media/incoming/video.mkv
-destination: profile  # Output to each profile's destination
+use_profile_destination: true  # Output to each profile's destination
 ```
 
 ### Requirements
@@ -258,6 +258,7 @@ destination: profile  # Output to each profile's destination
 - Profile destination must be an absolute path
 - The directory must exist (validated at job creation)
 - Cannot be combined with `create_profile_folders: true` in the request
+- Mutually exclusive with `destination` (don't set both)
 
 ---
 

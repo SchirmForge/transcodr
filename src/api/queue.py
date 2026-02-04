@@ -459,7 +459,7 @@ class JobQueue:
             return source_file.parent / output_filename
         else:
             # Output to destination
-            if request.destination == "profile":
+            if request.use_profile_destination:
                 # Use profile's destination field (absolute path)
                 if not profile or not profile.destination:
                     raise ValueError(f"Profile '{profile_name}' has no destination field")
@@ -487,7 +487,7 @@ class JobQueue:
                 except ValueError:
                     pass
 
-            # Create profile subfolder if requested (mutually exclusive with destination: profile)
+            # Create profile subfolder if requested (mutually exclusive with use_profile_destination)
             if request.create_profile_folders:
                 dest_base = dest_base / profile_name
 

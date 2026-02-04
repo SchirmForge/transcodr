@@ -144,7 +144,8 @@ priority: 5
 | `allow_folder_drop` | bool | `false` | Enable processing of dropped folders as complete units |
 | **Encoding (media type)** ||||
 | `profiles` | list | `[]` | Encoding profiles (required for media type) |
-| `destination` | path | null | Output directory (required for media, must differ from watchfolder_location) |
+| `destination` | path | null | Output directory (required unless use_profile_destination is true) |
+| `use_profile_destination` | bool | `false` | Use each profile's destination field instead of a single folder |
 | `temp_folder` | path | null | Temp folder for source copy during encoding |
 | `disable_temp_copy` | bool | `false` | If true, encode directly from source without copying |
 | `keep_processed_files` | bool | `true` | Keep source (rename to .processed) or delete after encoding |
@@ -158,7 +159,7 @@ priority: 5
 
 ### Using Profile Destinations
 
-Instead of specifying a single destination for all profiles, you can use `destination: profile` to output each profile to its own folder:
+Instead of specifying a single destination for all profiles, you can use `use_profile_destination: true` to output each profile to its own folder:
 
 ```yaml
 watchfolder_location: /media/incoming
@@ -166,13 +167,14 @@ watchfolder_type: media
 profiles:
   - x265-archival    # Has destination: /media/archive in profile
   - x265-streaming   # Has destination: /media/streaming in profile
-destination: profile  # Use each profile's destination field
+use_profile_destination: true  # Use each profile's destination field
 ```
 
-Requirements for `destination: profile`:
+Requirements for `use_profile_destination`:
 - Each profile must have a `destination:` field defined (absolute path)
 - The profile destination directory must exist
 - Cannot be combined with `create_profile_folders: true`
+- Mutually exclusive with `destination` (don't set both)
 
 ### File Stability Detection
 

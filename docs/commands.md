@@ -29,7 +29,7 @@ profiles:
   - x265-archival     # Has destination: /media/archive
   - x265-streaming    # Has destination: /media/streaming
 source: /media/videos/movie.mkv
-destination: profile  # Use each profile's destination
+use_profile_destination: true  # Use each profile's destination
 ```
 
 ---
@@ -49,12 +49,13 @@ destination: profile  # Use each profile's destination
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
 | `output_mode` | string | `replace` | `replace` (in-place with backup) or `destination` |
-| `destination` | path/string | null | Output folder path, or `profile` to use each profile's destination |
+| `destination` | path | null | Output folder path (required if output_mode is destination and use_profile_destination is false) |
+| `use_profile_destination` | bool | `false` | Use each profile's destination field instead of a single folder |
 | `preserve_structure` | bool | `true` | Recreate source folder hierarchy in destination |
 | `create_profile_folders` | bool | `false` | Create subfolder per profile (e.g., `dest/x265-balanced/`) |
 | `append_profile_name` | bool | `false` | Add profile name to filename (e.g., `video_x265-balanced.mkv`) |
 
-> **Note:** `create_profile_folders` cannot be used with `destination: profile`.
+> **Note:** `create_profile_folders` cannot be used with `use_profile_destination: true`.
 
 ### Source Handling
 
@@ -131,7 +132,7 @@ profiles:
   - x265-archival     # Profile has: destination: /media/archive
   - x265-streaming    # Profile has: destination: /media/streaming
 source: /media/videos/movie.mkv
-destination: profile
+use_profile_destination: true
 ```
 
 Output:
@@ -231,7 +232,7 @@ profiles:
   - x265-streaming     # destination: /media/streaming
   - extract-3m-at-15   # destination: /media/samples
 source: /media/incoming/movie.mkv
-destination: profile
+use_profile_destination: true
 ```
 
 ### High-Priority Single File
@@ -296,7 +297,7 @@ Then drop `.yaml` command files into `/var/spool/videotranscode/`.
    - Source path doesn't exist
    - `destination` missing when using `output_mode: destination`
    - Profile not found
-   - `destination: profile` used but profile has no destination
+   - `use_profile_destination: true` used but profile has no destination
 
 ### Jobs Not Starting
 

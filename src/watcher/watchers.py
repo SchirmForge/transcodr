@@ -460,10 +460,9 @@ class MediaFileWatcher:
         path_str = str(file_path)
 
         # Determine destination - either use profile destinations or a fixed folder
-        if self.config.use_profile_destination:
-            # Use each profile's destination field
-            destination_str = "profile"
-        else:
+        use_profile_dest = self.config.use_profile_destination
+        destination_str = None  # Will be set if not using profile destinations
+        if not use_profile_dest:
             # Use the configured destination folder
             destination = self.config.destination
 
@@ -502,6 +501,7 @@ class MediaFileWatcher:
             source=str(file_path),
             output_mode="destination",
             destination=destination_str,
+            use_profile_destination=use_profile_dest,
             preserve_structure=self.config.preserve_folder_structure,
             backup=False,
             hardware_accel=self.config.hardware_accel,
