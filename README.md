@@ -14,7 +14,24 @@ A robust, production-ready video transcoding system with daemon, CLI, and API in
 - **SQLite persistence** - Job queue survives daemon restarts
 - **Portable configs** - Use `$root_media`, `$HOME`, `~` placeholders in paths
 
-## Project Status: Version 0.2.2
+## Project Status: Version 0.2.3
+
+### What's New in v0.2.3
+
+**Profile-Level Destinations**
+- Profiles can define their own `destination:` folder (absolute path)
+- Use `destination: profile` in commands/watchfolders to output to each profile's folder
+- Supports path placeholders (`$root_media`, `~`, `$HOME`)
+- Validation ensures profile destination directories exist
+
+**Configurable Output Naming**
+- `profile_name_separator` config option for `append_profile_name` feature (default: `_`)
+- Customize how profile names are appended to filenames
+
+**Per-Source Concurrency Limits**
+- `max_concurrent_jobs` option in watchfolders and commands
+- Limit how many jobs run simultaneously from a single source
+- Useful for resource management on slower storage
 
 ### What's New in v0.2.2
 
@@ -157,7 +174,7 @@ python -m src.cli.client profiles
 | `source` | Source file or folder path |
 | `profiles` | List of encoding profiles |
 | `output_mode` | `replace` or `destination` |
-| `destination` | Output folder (required for destination mode) |
+| `destination` | Output folder, or `profile` to use each profile's destination |
 | `recursive` | Process subdirectories |
 | `preserve_structure` | Recreate folder structure in destination |
 | `create_profile_folders` | Create subfolder per profile (e.g., `dest/x265-balanced/`) |
@@ -165,6 +182,7 @@ python -m src.cli.client profiles
 | `delete_source` | Delete source after successful encoding |
 | `backup` | Create backup before replacing (default: true) |
 | `priority` | Job priority 1-10 (default: 5) |
+| `max_concurrent_jobs` | Limit concurrent jobs from this request |
 
 ### Example: YAML Encoding Request
 
@@ -303,6 +321,7 @@ storage:
   backup_originals: true
   backup_dir: .originals
   root_media: ~/Videos   # Base path for $root_media placeholder
+  profile_name_separator: "_"  # Separator for append_profile_name
 
 ffmpeg:
   hardware_accel: auto  # auto|vaapi|nvenc|qsv|none

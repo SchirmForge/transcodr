@@ -6,7 +6,7 @@ from typing import Optional, TYPE_CHECKING
 
 from .schema import WatchfolderType
 from .manager import WatchfolderConfigManager
-from .watchers import WatchFolderManager, CommandFileWatcher, MediaFileWatcher
+from .watchers import CommandFileWatcher, MediaFileWatcher
 
 if TYPE_CHECKING:
     from ..api.queue import JobQueue
@@ -24,23 +24,23 @@ class WatchfolderService:
     - MediaFileWatcher for 'media' type (watches for video/audio files)
     """
 
-    def __init__(self, job_queue: "JobQueue", watch_manager: WatchFolderManager):
+    def __init__(self, job_queue: "JobQueue"):
         """
         Initialize watchfolder service.
 
         Args:
             job_queue: Job queue to submit jobs to
-            watch_manager: Watch folder manager for watch requests
         """
         self.job_queue = job_queue
-        self.watch_manager = watch_manager
         self._command_watchers: dict[str, CommandFileWatcher] = {}
         self._media_watchers: dict[str, MediaFileWatcher] = {}
         self._root_media: Optional[Path] = None  # Set in start()
+        self._validated_profile_destinations: set[str] = set()  # Track validated paths
 
     async def start(self):
         """Load watchfolder configs and start watchers."""
         from ..config.manager import ConfigManager
+        from ..profiles.manager import ProfileManager
 
         # Load main config to get root_media setting
         main_config = ConfigManager.load_config()
@@ -49,11 +49,111 @@ class WatchfolderService:
         configs = WatchfolderConfigManager.load_configs()
         logger.info(f"Loaded {len(configs)} watchfolder configuration(s)")
 
+        # Create profile manager for validation
+        profile_manager = ProfileManager()
+        self._validated_profile_destinations.clear()  # Reset on start/reload
+
         for config in configs:
+            # Validate watchfolder before starting
+            errors, warnings = self._validate_watchfolder(config, profile_manager)
+            for warning in warnings:
+                logger.warning(f"Watchfolder {config.watchfolder_location}: {warning}")
+            if errors:
+                for error in errors:
+                    logger.error(f"Watchfolder {config.watchfolder_location}: {error}")
+                logger.error(f"Skipping invalid watchfolder: {config.watchfolder_location}")
+                continue
+
             if config.watchfolder_type == WatchfolderType.COMMAND:
                 await self._start_command_watcher(config)
             elif config.watchfolder_type == WatchfolderType.MEDIA:
                 await self._start_media_watcher(config)
+
+    def _expand_profile_destination(self, dest_str: str) -> Path:
+        """Expand $root_media, ~, $HOME in profile destination."""
+        import os
+        if self._root_media and "$root_media" in dest_str:
+            root_str = str(self._root_media).rstrip("/")
+            dest_str = dest_str.replace("$root_media", root_str)
+        return Path(os.path.expandvars(os.path.expanduser(dest_str)))
+
+    def _validate_watchfolder(
+        self,
+        config,
+        profile_manager,
+    ) -> tuple[list[str], list[str]]:
+        """
+        Validate watchfolder configuration before starting.
+
+        Returns:
+            Tuple of (errors, warnings)
+        """
+        errors = []
+        warnings = []
+
+        # Check watchfolder location exists
+        if not config.watchfolder_location.exists():
+            errors.append("Location does not exist")
+        elif not config.watchfolder_location.is_dir():
+            errors.append("Location is not a directory")
+
+        # For media type, validate profiles and destination
+        if config.watchfolder_type == WatchfolderType.MEDIA:
+            # Validate profiles list is not empty
+            if not config.profiles:
+                errors.append("Missing 'profiles' setting")
+
+            # Validate profiles exist
+            for profile_name in config.profiles:
+                if not profile_manager.profile_exists(profile_name):
+                    errors.append(f"Profile not found: '{profile_name}'")
+
+            # Validate destination settings
+            if config.use_profile_destination:
+                # use_profile_destination mode - validate each profile's destination
+                for profile_name in config.profiles:
+                    if not profile_manager.profile_exists(profile_name):
+                        continue  # Already reported as error above
+                    try:
+                        profile = profile_manager.load_profile(profile_name)
+                        if not profile.destination:
+                            errors.append(f"Profile '{profile_name}' has no destination field")
+                        else:
+                            # Skip if already validated (avoids duplicate checks)
+                            if profile.destination in self._validated_profile_destinations:
+                                continue
+                            # Expand and validate
+                            dest_path = self._expand_profile_destination(profile.destination)
+                            if not dest_path.exists():
+                                errors.append(
+                                    f"Profile '{profile_name}' destination does not exist: {dest_path}"
+                                )
+                            elif not dest_path.is_dir():
+                                errors.append(
+                                    f"Profile '{profile_name}' destination is not a directory: {dest_path}"
+                                )
+                            else:
+                                self._validated_profile_destinations.add(profile.destination)
+                    except Exception as e:
+                        errors.append(f"Failed to load profile '{profile_name}': {e}")
+            elif not config.destination:
+                errors.append(
+                    "Missing 'destination' setting. "
+                    "Media watchfolders require a destination folder (or use_profile_destination: true)."
+                )
+            else:
+                # Direct destination path - validate it exists and differs from source
+                if config.destination.resolve() == config.watchfolder_location.resolve():
+                    errors.append(
+                        "Destination cannot be the same as watchfolder_location. "
+                        "This would cause infinite re-encoding."
+                    )
+                elif not config.destination.exists():
+                    errors.append(f"Destination does not exist: {config.destination}")
+                elif not config.destination.is_dir():
+                    errors.append(f"Destination is not a directory: {config.destination}")
+
+        return errors, warnings
 
     async def _start_command_watcher(self, config):
         """Start a command file watcher for the given config."""
@@ -67,7 +167,6 @@ class WatchfolderService:
         watcher = CommandFileWatcher(
             watch_path=location,
             job_queue=self.job_queue,
-            watch_manager=self.watch_manager,
             scan_interval=config.scan_interval,
             root_media=self._root_media,
         )
@@ -77,33 +176,9 @@ class WatchfolderService:
 
     async def _start_media_watcher(self, config):
         """Start a media file watcher for the given config."""
+        # Note: Validation is done in _validate_watchfolder() before this is called
         location = config.watchfolder_location
         location_str = str(location)
-
-        # Validate media config has profiles
-        if not config.profiles:
-            logger.error(
-                f"Media watchfolder missing 'profiles' setting: {location}. "
-                "Skipping this watchfolder."
-            )
-            return
-
-        # Validate destination is set (required to avoid infinite re-encoding)
-        if not config.destination:
-            logger.error(
-                f"Media watchfolder missing 'destination' setting: {location}. "
-                "Media watchfolders require a destination folder for encoded files. "
-                "Skipping this watchfolder."
-            )
-            return
-
-        # Validate destination differs from source (prevent infinite loop)
-        if config.destination.resolve() == location.resolve():
-            logger.error(
-                f"Media watchfolder destination cannot be the same as watchfolder_location: {location}. "
-                "This would cause infinite re-encoding. Skipping this watchfolder."
-            )
-            return
 
         if location_str in self._media_watchers:
             logger.warning(f"Media watcher already exists for: {location}")
@@ -112,7 +187,8 @@ class WatchfolderService:
         watcher = MediaFileWatcher(config=config, job_queue=self.job_queue)
         await watcher.start()
         self._media_watchers[location_str] = watcher
-        logger.info(f"Started media watcher for: {location} -> {config.destination}")
+        dest_info = "profile destinations" if config.use_profile_destination else config.destination
+        logger.info(f"Started media watcher for: {location} -> {dest_info}")
 
     async def stop(self):
         """Stop all watchers."""
@@ -138,11 +214,16 @@ class WatchfolderService:
 
         media_list = []
         for path, watcher in self._media_watchers.items():
+            dest_value = (
+                "profile" if watcher.config.use_profile_destination
+                else str(watcher.config.destination)
+            )
             media_list.append({
                 "id": path,
                 "path": path,
                 "profiles": watcher.config.profiles,
-                "destination": str(watcher.config.destination),
+                "destination": dest_value,
+                "use_profile_destination": watcher.config.use_profile_destination,
                 "scan_interval": watcher.config.scan_interval,
                 "file_patterns": watcher.config.file_patterns,
                 "active": watcher._running,
@@ -173,12 +254,17 @@ class WatchfolderService:
         # Check media watchers
         if folder_id in self._media_watchers:
             watcher = self._media_watchers[folder_id]
+            dest_value = (
+                "profile" if watcher.config.use_profile_destination
+                else str(watcher.config.destination)
+            )
             return {
                 "id": folder_id,
                 "path": folder_id,
                 "type": "media",
                 "profiles": watcher.config.profiles,
-                "destination": str(watcher.config.destination),
+                "destination": dest_value,
+                "use_profile_destination": watcher.config.use_profile_destination,
                 "scan_interval": watcher.config.scan_interval,
                 "file_patterns": watcher.config.file_patterns,
                 "active": watcher._running,

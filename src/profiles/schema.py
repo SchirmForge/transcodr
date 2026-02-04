@@ -128,6 +128,12 @@ class Profile(BaseModel):
         description="Tags for categorization (e.g., 'high-quality', 'fast', 'hdr')"
     )
 
+    # Output organization
+    destination: Optional[str] = Field(
+        default=None,
+        description="Absolute output folder path (used when request has destination: profile)"
+    )
+
     def to_ffmpeg_args(
         self,
         input_path: str,

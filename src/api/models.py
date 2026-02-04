@@ -24,12 +24,6 @@ class OutputMode(str, Enum):
     DESTINATION = "destination"   # Output to destination folder
 
 
-class RequestMode(str, Enum):
-    """Request mode - one-time encoding or watch folder registration."""
-    ENCODE = "encode"   # Process files immediately
-    WATCH = "watch"     # Register as watch folder for continuous monitoring
-
-
 # =============================================================================
 # Watchfolder Context (for job file handling)
 # =============================================================================
@@ -100,21 +94,8 @@ class EncodingRequest(BaseModel):
     recursive: true
     ```
 
-    Create a watch folder (continuous monitoring):
-    ```yaml
-    mode: watch
-    profiles:
-      - x265-balanced
-      - x265-mobile
-    source: /media/watch/incoming/
-    output_mode: destination
-    destination: /media/encoded/
-    min_age_seconds: 60    # Wait 1 minute before processing new files
-    ```
-
     Full options:
     ```yaml
-    mode: encode
     profiles:
       - x265-balanced
       - x265-mobile
@@ -130,12 +111,6 @@ class EncodingRequest(BaseModel):
     priority: 5
     ```
     """
-
-    # Request mode
-    mode: RequestMode = Field(
-        default=RequestMode.ENCODE,
-        description="Mode: 'encode' (one-time) or 'watch' (continuous monitoring)"
-    )
 
     # Profile(s) - can be single string or list
     # If single profile specified via 'profile' field, it's converted to list
@@ -183,13 +158,6 @@ class EncodingRequest(BaseModel):
         description="File patterns to match (glob patterns)"
     )
 
-    # Watch folder options (only for mode=watch)
-    min_age_seconds: int = Field(
-        default=60,
-        ge=0,
-        description="Minimum file age before processing (seconds) - for watch mode"
-    )
-
     # Performance options
     hardware_accel: Optional[str] = Field(
         default=None,
@@ -216,6 +184,13 @@ class EncodingRequest(BaseModel):
         description="Delete source file after successful encoding"
     )
 
+    # Concurrency control
+    max_concurrent_jobs: Optional[int] = Field(
+        default=None,
+        ge=1,
+        description="Max concurrent jobs for this request (None=use global limit)"
+    )
+
     # Watchfolder context (for MediaFileWatcher submissions)
     watchfolder_context: Optional[WatchfolderContext] = Field(
         default=None,
@@ -238,18 +213,6 @@ class EncodingRequest(BaseModel):
             elif 'profiles' in data and isinstance(data['profiles'], str):
                 data['profiles'] = [data['profiles']]
         return data
-
-    @field_validator('mode', mode='before')
-    @classmethod
-    def normalize_mode(cls, v):
-        """Allow various mode strings."""
-        if isinstance(v, str):
-            v = v.lower()
-            if v in ('encode', 'run', 'process', 'one-time'):
-                return RequestMode.ENCODE
-            elif v in ('watch', 'monitor', 'folder'):
-                return RequestMode.WATCH
-        return v
 
     @field_validator('output_mode', mode='before')
     @classmethod
@@ -287,6 +250,16 @@ class EncodingRequest(BaseModel):
             return v.lower() in ('yes', 'true', '1')
         return v
 
+    @model_validator(mode='after')
+    def validate_destination_profile(self):
+        """Validate destination: profile cannot be mixed with create_profile_folders."""
+        if self.destination == "profile" and self.create_profile_folders:
+            raise ValueError(
+                "Cannot use 'destination: profile' with create_profile_folders=true. "
+                "Use one or the other."
+            )
+        return self
+
     def validate_request(self) -> list[str]:
         """Validate the request and return list of issues."""
         issues = []
@@ -299,10 +272,6 @@ class EncodingRequest(BaseModel):
         source_path = Path(self.source)
         if not source_path.exists():
             issues.append(f"Source path does not exist: {self.source}")
-
-        # For watch mode, source must be a directory
-        if self.mode == RequestMode.WATCH and source_path.exists() and not source_path.is_dir():
-            issues.append(f"Watch mode requires source to be a directory: {self.source}")
 
         # Check destination is provided when needed
         if self.output_mode == OutputMode.DESTINATION and not self.destination:
@@ -322,6 +291,7 @@ class EncodingRequest(BaseModel):
         profile_name: str,
         profile_index: int,
         container: Optional[str] = None,
+        separator: str = "_",
     ) -> str:
         """
         Generate output filename based on profile position and settings.
@@ -330,6 +300,8 @@ class EncodingRequest(BaseModel):
             source_file: Source file path
             profile_name: Profile name being used
             profile_index: Index of profile in profiles list (0-based)
+            container: Override output container format
+            separator: Separator between filename and profile name (default: "_")
 
         Returns:
             Output filename
@@ -352,13 +324,13 @@ class EncodingRequest(BaseModel):
 
         # If append_profile_name is enabled, always add profile name
         if self.append_profile_name:
-            return f"{stem}_{profile_name}{suffix}"
+            return f"{stem}{separator}{profile_name}{suffix}"
 
         # Default behavior: first profile keeps original name, others get suffix
         if profile_index == 0:
             return f"{stem}{suffix}"
         else:
-            return f"{stem}_{profile_name}{suffix}"
+            return f"{stem}{separator}{profile_name}{suffix}"
 
     @staticmethod
     def expand_root_media(path: str, root_media: Path) -> str:
@@ -439,7 +411,6 @@ class WatchFolderInfo(BaseModel):
     preserve_structure: bool = Field(default=True)
     recursive: bool = Field(default=True)
     file_patterns: list[str] = Field(description="File patterns to match")
-    min_age_seconds: int = Field(default=60)
     hardware_accel: Optional[str] = Field(default=None)
     priority: int = Field(default=5)
 
@@ -543,10 +514,6 @@ class SubmitJobResponse(BaseModel):
         default_factory=list,
         description="Created job IDs (may be multiple for folders/profiles)"
     )
-    watch_folder_id: Optional[str] = Field(
-        default=None,
-        description="Watch folder ID if mode=watch"
-    )
     message: str
 
 
@@ -560,9 +527,3 @@ class CancelJobResponse(BaseModel):
     """Response after cancelling a job."""
     success: bool
     message: str
-
-
-class WatchFolderListResponse(BaseModel):
-    """Response with list of watch folders."""
-    watch_folders: list[WatchFolderInfo]
-    total: int

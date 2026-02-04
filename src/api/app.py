@@ -19,11 +19,10 @@ from .models import (
     SubmitJobResponse,
     CancelJobResponse,
     WatchFolderInfo,
-    WatchFolderListResponse,
     process_encoding_request,
 )
 from .queue import JobQueue
-from ..watcher import WatchFolderManager, WatchfolderService
+from ..watcher import WatchfolderService
 from ..config.manager import ConfigManager
 from ..core.hardware import HardwareCapabilities
 from ..profiles.manager import ProfileManager
@@ -33,7 +32,6 @@ logger = logging.getLogger(__name__)
 # Global state
 _start_time: datetime = datetime.now()
 _job_queue: Optional[JobQueue] = None
-_watch_manager: Optional[WatchFolderManager] = None
 _watchfolder_service: Optional[WatchfolderService] = None
 _config = None
 
@@ -43,7 +41,7 @@ VERSION = "0.1.0"
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application lifespan - startup and shutdown."""
-    global _start_time, _job_queue, _watch_manager, _watchfolder_service, _config
+    global _start_time, _job_queue, _watchfolder_service, _config
 
     logger.info("Starting videotranscode daemon...")
     _start_time = datetime.now()
@@ -55,35 +53,29 @@ async def lifespan(app: FastAPI):
     _config = ConfigManager.load_config()
     logger.info(f"Configuration loaded from: {ConfigManager.DEFAULT_CONFIG_PATH}")
 
+    # Validate configuration
+    errors, warnings = ConfigManager.validate_config(_config)
+    for warning in warnings:
+        logger.warning(f"Config warning: {warning}")
+    if errors:
+        for error in errors:
+            logger.error(f"Config error: {error}")
+        raise RuntimeError(f"Configuration validation failed: {'; '.join(errors)}")
+
     # Initialize job queue
     _job_queue = JobQueue(
         max_concurrent=_config.daemon.max_concurrent_jobs,
         db_path=_config.get_jobs_db_path(),
         temp_dir=_config.storage.temp_dir,
         duration_tolerance_seconds=_config.validation.duration_tolerance,
+        profile_name_separator=_config.storage.profile_name_separator,
+        root_media=_config.storage.root_media,
     )
     await _job_queue.start()
     logger.info(f"Job queue started (max concurrent: {_config.daemon.max_concurrent_jobs}, temp: {_config.storage.temp_dir})")
 
-    # Initialize watch folder manager
-    _watch_manager = WatchFolderManager(_job_queue)
-    await _watch_manager.start()
-    logger.info("Watch folder manager started")
-
-    # Load hot folders from config
-    for hot_folder in _config.hot_folders:
-        request = EncodingRequest(
-            mode="watch",
-            profiles=[hot_folder.profile],
-            source=str(hot_folder.path),
-            recursive=hot_folder.recursive,
-            min_age_seconds=hot_folder.min_age_seconds,
-        )
-        await _watch_manager.register(request)
-        logger.info(f"Registered hot folder: {hot_folder.path}")
-
-    # Initialize watchfolder service (for command file watchfolders)
-    _watchfolder_service = WatchfolderService(_job_queue, _watch_manager)
+    # Initialize watchfolder service (for config-based watchfolders)
+    _watchfolder_service = WatchfolderService(_job_queue)
     await _watchfolder_service.start()
     logger.info("Watchfolder service started")
 
@@ -93,8 +85,6 @@ async def lifespan(app: FastAPI):
     logger.info("Shutting down videotranscode daemon...")
     if _watchfolder_service:
         await _watchfolder_service.stop()
-    if _watch_manager:
-        await _watch_manager.stop()
     if _job_queue:
         await _job_queue.stop()
     logger.info("Daemon stopped")
@@ -135,7 +125,7 @@ async def root():
 @app.get("/status", response_model=DaemonStatus, tags=["Status"])
 async def get_status():
     """Get daemon status including queue info and hardware capabilities."""
-    global _start_time, _job_queue, _watch_manager, _config
+    global _start_time, _job_queue, _config
 
     uptime = (datetime.now() - _start_time).total_seconds()
 
@@ -150,9 +140,6 @@ async def get_status():
         current_concurrent=0,
     )
 
-    # Get watch folders
-    watch_folders = await _watch_manager.list_folders() if _watch_manager else []
-
     # Get hardware capabilities
     hw = HardwareCapabilities()
     hardware = hw.get_summary()
@@ -162,7 +149,7 @@ async def get_status():
         version=VERSION,
         uptime_seconds=uptime,
         queue=queue_info,
-        watch_folders=watch_folders,
+        watch_folders=[],  # Config-based watchfolders are listed via /watchfolders endpoint
         hardware=hardware,
         config_path=str(ConfigManager.DEFAULT_CONFIG_PATH),
     )
@@ -181,12 +168,11 @@ async def health_check():
 @app.post("/jobs", response_model=SubmitJobResponse, tags=["Jobs"])
 async def submit_job(request: SubmitJobRequest):
     """
-    Submit a new encoding job or register a watch folder.
+    Submit a new encoding job.
 
-    For mode='encode': Creates encoding jobs for the source files.
-    For mode='watch': Registers a watch folder for continuous monitoring.
+    Creates encoding jobs for the specified source files using the given profiles.
     """
-    global _job_queue, _watch_manager, _config
+    global _job_queue, _config
 
     encoding_request = request.request
 
@@ -198,29 +184,16 @@ async def submit_job(request: SubmitJobRequest):
     if issues:
         raise HTTPException(status_code=400, detail="; ".join(issues))
 
-    if encoding_request.mode.value == "watch":
-        # Register watch folder
-        if not _watch_manager:
-            raise HTTPException(status_code=500, detail="Watch manager not initialized")
+    # Submit encoding job(s)
+    if not _job_queue:
+        raise HTTPException(status_code=500, detail="Job queue not initialized")
 
-        watch_folder_id = await _watch_manager.register(encoding_request)
-        return SubmitJobResponse(
-            success=True,
-            job_ids=[],
-            watch_folder_id=watch_folder_id,
-            message=f"Watch folder registered: {encoding_request.source}",
-        )
-    else:
-        # Submit encoding job(s)
-        if not _job_queue:
-            raise HTTPException(status_code=500, detail="Job queue not initialized")
-
-        job_ids = await _job_queue.submit(encoding_request)
-        return SubmitJobResponse(
-            success=True,
-            job_ids=job_ids,
-            message=f"Submitted {len(job_ids)} job(s)",
-        )
+    job_ids = await _job_queue.submit(encoding_request)
+    return SubmitJobResponse(
+        success=True,
+        job_ids=job_ids,
+        message=f"Submitted {len(job_ids)} job(s)",
+    )
 
 
 @app.get("/jobs", response_model=JobListResponse, tags=["Jobs"])
@@ -293,13 +266,11 @@ async def retry_job(job_id: str):
 @app.get("/watchfolders", tags=["Watchfolders"])
 async def list_watchfolders():
     """
-    List all watchfolders (both config-based and API-registered).
+    List all config-based watchfolders.
 
-    Returns watchfolders with their source indicated:
-    - source: "config" - Loaded from ~/.config/videotranscode/watchfolders/*.yaml
-    - source: "api" - Registered via API at runtime
+    Watchfolders are defined in ~/.config/videotranscode/watchfolders/*.yaml
     """
-    global _watchfolder_service, _watch_manager
+    global _watchfolder_service
 
     result = {
         "watchfolders": [],
@@ -318,15 +289,6 @@ async def list_watchfolders():
             watcher["type"] = "media"
             result["watchfolders"].append(watcher)
 
-    # Get API-registered watchfolders
-    if _watch_manager:
-        api_folders = await _watch_manager.list_folders()
-        for folder in api_folders:
-            folder_dict = folder.model_dump()
-            folder_dict["source"] = "api"
-            folder_dict["type"] = "command"
-            result["watchfolders"].append(folder_dict)
-
     result["total"] = len(result["watchfolders"])
     return result
 
@@ -334,22 +296,13 @@ async def list_watchfolders():
 @app.get("/watchfolders/{folder_id}", tags=["Watchfolders"])
 async def get_watchfolder(folder_id: str):
     """Get watchfolder details by ID."""
-    global _watchfolder_service, _watch_manager
+    global _watchfolder_service
 
-    # Check config-based watchfolders first
     if _watchfolder_service:
         watcher = _watchfolder_service.get_watcher(folder_id)
         if watcher:
             watcher["source"] = "config"
             return watcher
-
-    # Check API-registered watchfolders
-    if _watch_manager:
-        folder = await _watch_manager.get_folder(folder_id)
-        if folder:
-            folder_dict = folder.model_dump()
-            folder_dict["source"] = "api"
-            return folder_dict
 
     raise HTTPException(status_code=404, detail=f"Watchfolder not found: {folder_id}")
 
@@ -359,11 +312,10 @@ async def remove_watchfolder(folder_id: str):
     """
     Remove a watchfolder.
 
-    Note: Config-based watchfolders cannot be removed via API (delete the YAML file instead).
+    Config-based watchfolders cannot be removed via API - delete the YAML file instead.
     """
-    global _watchfolder_service, _watch_manager
+    global _watchfolder_service
 
-    # Check if it's a config-based watchfolder
     if _watchfolder_service:
         watcher = _watchfolder_service.get_watcher(folder_id)
         if watcher:
@@ -372,29 +324,16 @@ async def remove_watchfolder(folder_id: str):
                 detail="Cannot remove config-based watchfolder via API. Delete the YAML file instead."
             )
 
-    # Try to remove API-registered watchfolder
-    if _watch_manager:
-        success = await _watch_manager.unregister(folder_id)
-        if success:
-            return {"success": True, "message": f"Watchfolder removed: {folder_id}"}
-
     raise HTTPException(status_code=404, detail=f"Watchfolder not found: {folder_id}")
 
 
 @app.post("/watchfolders/{folder_id}/pause", tags=["Watchfolders"])
 async def pause_watchfolder(folder_id: str):
     """Pause a watchfolder."""
-    global _watchfolder_service, _watch_manager
+    global _watchfolder_service
 
-    # Check config-based watchfolders
     if _watchfolder_service:
         success = _watchfolder_service.pause_watcher(folder_id)
-        if success:
-            return {"success": True, "message": f"Watchfolder paused: {folder_id}"}
-
-    # Check API-registered watchfolders
-    if _watch_manager:
-        success = await _watch_manager.pause(folder_id)
         if success:
             return {"success": True, "message": f"Watchfolder paused: {folder_id}"}
 
@@ -404,17 +343,10 @@ async def pause_watchfolder(folder_id: str):
 @app.post("/watchfolders/{folder_id}/resume", tags=["Watchfolders"])
 async def resume_watchfolder(folder_id: str):
     """Resume a paused watchfolder."""
-    global _watchfolder_service, _watch_manager
+    global _watchfolder_service
 
-    # Check config-based watchfolders
     if _watchfolder_service:
         success = _watchfolder_service.resume_watcher(folder_id)
-        if success:
-            return {"success": True, "message": f"Watchfolder resumed: {folder_id}"}
-
-    # Check API-registered watchfolders
-    if _watch_manager:
-        success = await _watch_manager.resume(folder_id)
         if success:
             return {"success": True, "message": f"Watchfolder resumed: {folder_id}"}
 
@@ -487,16 +419,29 @@ async def reload_config():
     - Stop all current watchfolders
     - Reload and start watchfolders from config files
     """
-    global _config, _watchfolder_service, _watch_manager
+    global _config, _watchfolder_service
 
     try:
         # Reload main config
         _config = ConfigManager.load_config()
         logger.info(f"Configuration reloaded from: {ConfigManager.DEFAULT_CONFIG_PATH}")
 
+        # Validate configuration
+        errors, warnings = ConfigManager.validate_config(_config)
+        for warning in warnings:
+            logger.warning(f"Config warning: {warning}")
+        if errors:
+            for error in errors:
+                logger.error(f"Config error: {error}")
+            raise HTTPException(
+                status_code=400,
+                detail=f"Configuration validation failed: {'; '.join(errors)}"
+            )
+
         # Update job queue settings and clear profile cache
         if _job_queue:
             _job_queue.set_max_concurrent(_config.daemon.max_concurrent_jobs)
+            _job_queue.set_root_media(_config.storage.root_media)
             _job_queue.clear_profile_cache()
             logger.info("Profile cache cleared")
 

@@ -61,7 +61,11 @@ class WatchfolderConfig(BaseModel):
     )
     destination: Optional[Path] = Field(
         default=None,
-        description="Destination folder for encoded files (required for media type, must differ from watchfolder_location)"
+        description="Destination folder for encoded files (required unless use_profile_destination is true)"
+    )
+    use_profile_destination: bool = Field(
+        default=False,
+        description="Use each profile's destination field instead of a single destination folder"
     )
     temp_folder: Optional[Path] = Field(
         default=None,
@@ -85,6 +89,11 @@ class WatchfolderConfig(BaseModel):
         le=10,
         description="Job priority (1=lowest, 10=highest)"
     )
+    max_concurrent_jobs: Optional[int] = Field(
+        default=None,
+        ge=1,
+        description="Max concurrent jobs for this watchfolder (None=use global limit)"
+    )
     preserve_folder_structure: bool = Field(
         default=True,
         description="Preserve folder structure from source to destination"
@@ -96,10 +105,20 @@ class WatchfolderConfig(BaseModel):
 
     @model_validator(mode='after')
     def validate_folder_options(self) -> 'WatchfolderConfig':
-        """Ensure allow_folder_drop and recursive are mutually exclusive."""
+        """Validate watchfolder configuration options."""
+        # allow_folder_drop and recursive are mutually exclusive
         if self.allow_folder_drop and self.recursive:
             raise ValueError(
                 "allow_folder_drop and recursive are mutually exclusive. "
                 "Use allow_folder_drop for folder processing, or recursive for multi-user subdirectories."
             )
+
+        # use_profile_destination and destination are mutually exclusive
+        if self.use_profile_destination and self.destination:
+            raise ValueError(
+                "use_profile_destination and destination are mutually exclusive. "
+                "Use use_profile_destination to output to each profile's destination, "
+                "or specify a single destination folder."
+            )
+
         return self

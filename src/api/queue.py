@@ -42,6 +42,8 @@ class JobQueue:
         db_path: Optional[Path] = None,
         temp_dir: Optional[Path] = None,
         duration_tolerance_seconds: float = 5.0,
+        profile_name_separator: str = "_",
+        root_media: Optional[Path] = None,
     ):
         """
         Initialize job queue.
@@ -50,9 +52,14 @@ class JobQueue:
             max_concurrent: Maximum concurrent encoding jobs
             db_path: Path to SQLite database (None for in-memory)
             temp_dir: Temporary directory for encoding (None for system temp)
+            duration_tolerance_seconds: Tolerance for duration validation
+            profile_name_separator: Separator between filename and profile name
+            root_media: Base path for $root_media placeholder expansion
         """
         self.max_concurrent = max_concurrent
         self.db_path = db_path or Path(":memory:")
+        self._profile_name_separator = profile_name_separator
+        self._root_media = root_media
 
         self._running = False
         self._paused = False
@@ -73,6 +80,10 @@ class JobQueue:
         self._folder_requests: dict[str, EncodingRequest] = {}  # folder_key -> original request
         self._folder_monitor_tasks: dict[str, asyncio.Task] = {}
         self._job_to_folder: dict[str, str] = {}  # job_id -> folder_key (for completion tracking)
+
+        # Per-source concurrency tracking
+        self._source_running_counts: dict[str, int] = {}  # source_id -> running count
+        self._source_limits: dict[str, int] = {}  # source_id -> max_concurrent
 
     async def start(self):
         """Start the job queue."""
@@ -116,6 +127,11 @@ class JobQueue:
         if old_value != max_concurrent:
             logger.info(f"Max concurrent jobs updated: {old_value} -> {max_concurrent}")
 
+    def set_root_media(self, root_media: Path) -> None:
+        """Update the root_media path (for config reload)."""
+        self._root_media = root_media
+        logger.info(f"Root media path updated: {root_media}")
+
     def clear_profile_cache(self) -> None:
         """Clear the profile cache to force reload from disk on next use."""
         self._profile_manager.clear_cache()
@@ -158,7 +174,8 @@ class JobQueue:
                 backup BOOLEAN DEFAULT 1,
                 backup_dir TEXT DEFAULT '.originals',
                 output_mode TEXT DEFAULT 'replace',
-                delete_source BOOLEAN DEFAULT 0
+                delete_source BOOLEAN DEFAULT 0,
+                source_id TEXT
             )
         """)
 
@@ -182,6 +199,13 @@ class JobQueue:
         except sqlite3.OperationalError:
             logger.info("Migrating database: adding watchfolder_context column")
             self._conn.execute("ALTER TABLE jobs ADD COLUMN watchfolder_context TEXT")
+
+        # Migration: add source_id column if it doesn't exist (for per-source concurrency)
+        try:
+            self._conn.execute("SELECT source_id FROM jobs LIMIT 1")
+        except sqlite3.OperationalError:
+            logger.info("Migrating database: adding source_id column")
+            self._conn.execute("ALTER TABLE jobs ADD COLUMN source_id TEXT")
 
         # Create index for efficient queries
         self._conn.execute("""
@@ -325,7 +349,23 @@ class JobQueue:
         Returns:
             List of created job IDs
         """
+        import json
+
         job_ids = []
+
+        # Generate source_id for per-source concurrency tracking
+        # Use watchfolder file_hash if available, otherwise generate new UUID
+        if request.watchfolder_context and request.watchfolder_context.file_hash:
+            source_id = request.watchfolder_context.file_hash
+        else:
+            source_id = str(uuid.uuid4())
+
+        # Register per-source concurrency limit if specified
+        if request.max_concurrent_jobs:
+            # Ensure limit doesn't exceed global limit
+            effective_limit = min(request.max_concurrent_jobs, self.max_concurrent)
+            self._source_limits[source_id] = effective_limit
+            logger.debug(f"Registered source limit: {source_id} -> {effective_limit}")
 
         for file_path in files:
             parent_job_id = str(uuid.uuid4()) if len(request.profiles) > 1 else None
@@ -344,7 +384,6 @@ class JobQueue:
                 # Serialize watchfolder_context if present
                 watchfolder_context_json = None
                 if request.watchfolder_context:
-                    import json
                     watchfolder_context_json = json.dumps(request.watchfolder_context.model_dump())
 
                 # Insert job into database
@@ -354,8 +393,9 @@ class JobQueue:
                             id, status, profile, source_path, output_path,
                             profile_index, total_profiles, parent_job_id,
                             created_at, priority, hardware_accel, backup, backup_dir,
-                            source_size_bytes, output_mode, delete_source, watchfolder_context
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                            source_size_bytes, output_mode, delete_source, watchfolder_context,
+                            source_id
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """, (
                         job_id,
                         JobStatus.PENDING.value,
@@ -374,8 +414,9 @@ class JobQueue:
                         request.output_mode.value,
                         request.delete_source,
                         watchfolder_context_json,
+                        source_id,
                     ))
-        
+
                 job_ids.append(job_id)
 
                 # Track job-to-folder association for completion handling
@@ -395,7 +436,10 @@ class JobQueue:
         profile_index: int,
     ) -> Optional[Path]:
         """Determine output path for a job."""
+        import os
+
         container = None
+        profile = None
         try:
             profile = self._profile_manager.load_profile(profile_name)
             container = profile.container
@@ -407,6 +451,7 @@ class JobQueue:
             profile_name,
             profile_index,
             container=container,
+            separator=self._profile_name_separator,
         )
 
         if request.output_mode == OutputMode.REPLACE:
@@ -414,10 +459,25 @@ class JobQueue:
             return source_file.parent / output_filename
         else:
             # Output to destination
-            if not request.destination:
+            if request.destination == "profile":
+                # Use profile's destination field (absolute path)
+                if not profile or not profile.destination:
+                    raise ValueError(f"Profile '{profile_name}' has no destination field")
+                # Expand path placeholders ($root_media, ~, etc.)
+                dest_str = profile.destination
+                if self._root_media and "$root_media" in dest_str:
+                    root_str = str(self._root_media).rstrip("/")
+                    dest_str = dest_str.replace("$root_media", root_str)
+                dest_base = Path(os.path.expandvars(os.path.expanduser(dest_str)))
+                # Validate destination directory exists
+                if not dest_base.exists():
+                    raise ValueError(f"Profile '{profile_name}' destination does not exist: {dest_base}")
+                if not dest_base.is_dir():
+                    raise ValueError(f"Profile '{profile_name}' destination is not a directory: {dest_base}")
+            elif request.destination:
+                dest_base = Path(request.destination)
+            else:
                 return None
-
-            dest_base = Path(request.destination)
 
             # Preserve folder structure if requested
             if request.preserve_structure:
@@ -427,7 +487,7 @@ class JobQueue:
                 except ValueError:
                     pass
 
-            # Create profile subfolder if requested
+            # Create profile subfolder if requested (mutually exclusive with destination: profile)
             if request.create_profile_folders:
                 dest_base = dest_base / profile_name
 
@@ -469,19 +529,34 @@ class JobQueue:
                 await asyncio.sleep(1)
 
     async def _get_next_pending_job(self) -> Optional[dict]:
-        """Get the next pending job by priority."""
+        """Get the next pending job by priority, respecting per-source limits."""
         async with self._lock:
+            # Get all pending jobs ordered by priority
             cursor = self._conn.execute("""
                 SELECT * FROM jobs
                 WHERE status = ?
                 ORDER BY priority DESC, created_at ASC
-                LIMIT 1
             """, (JobStatus.PENDING.value,))
-            row = cursor.fetchone()
-            return dict(row) if row else None
+
+            for row in cursor.fetchall():
+                job = dict(row)
+                source_id = job.get("source_id")
+
+                # Check per-source limit
+                if source_id and source_id in self._source_limits:
+                    current_running = self._source_running_counts.get(source_id, 0)
+                    if current_running >= self._source_limits[source_id]:
+                        # Source at its limit, skip to next job
+                        continue
+
+                # This job can run
+                return job
+
+            return None
 
     async def _execute_job(self, job_id: str):
         """Execute a single job."""
+        source_id = None  # Track for cleanup in finally
         try:
             # Update status to running
             await self._update_job_status(job_id, JobStatus.RUNNING)
@@ -491,7 +566,7 @@ class JobQueue:
                 cursor = self._conn.execute(
                     """SELECT id, profile, source_path, output_path, hardware_accel,
                               profile_index, total_profiles, parent_job_id, output_mode,
-                              delete_source, watchfolder_context
+                              delete_source, watchfolder_context, source_id
                        FROM jobs WHERE id = ?""",
                     (job_id,)
                 )
@@ -500,6 +575,11 @@ class JobQueue:
             if not row:
                 logger.error(f"Job not found: {job_id}")
                 return
+
+            # Track per-source running count
+            source_id = row["source_id"]
+            if source_id:
+                self._source_running_counts[source_id] = self._source_running_counts.get(source_id, 0) + 1
 
             hardware_accel = row["hardware_accel"]
             profile_index = row["profile_index"] or 0
@@ -554,6 +634,14 @@ class JobQueue:
             # Remove from active jobs
             if job_id in self._active_jobs:
                 del self._active_jobs[job_id]
+
+            # Decrement per-source running count
+            if source_id and source_id in self._source_running_counts:
+                self._source_running_counts[source_id] -= 1
+                if self._source_running_counts[source_id] <= 0:
+                    # Clean up tracking for this source
+                    del self._source_running_counts[source_id]
+                    self._source_limits.pop(source_id, None)
 
     def _sync_update_progress(self, job_id: str, job: Job):
         """Synchronously update job progress (called from thread)."""

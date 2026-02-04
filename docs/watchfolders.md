@@ -151,8 +151,28 @@ priority: 5
 | `preserve_folder_structure` | bool | `true` | Maintain folder hierarchy from source to destination |
 | `hardware_accel` | string | null | Override hardware acceleration |
 | `priority` | int | `5` | Job priority (1=lowest, 10=highest) |
+| `max_concurrent_jobs` | int | null | Max concurrent jobs from this watchfolder (cannot exceed daemon limit) |
+| `append_profile_name` | bool | `false` | Append profile name to output filename |
 
 > **Note:** `recursive` and `allow_folder_drop` are mutually exclusive. Use `recursive` for multi-user scenarios where files are dropped in user subdirectories. Use `allow_folder_drop` to process entire folders as units.
+
+### Using Profile Destinations
+
+Instead of specifying a single destination for all profiles, you can use `destination: profile` to output each profile to its own folder:
+
+```yaml
+watchfolder_location: /media/incoming
+watchfolder_type: media
+profiles:
+  - x265-archival    # Has destination: /media/archive in profile
+  - x265-streaming   # Has destination: /media/streaming in profile
+destination: profile  # Use each profile's destination field
+```
+
+Requirements for `destination: profile`:
+- Each profile must have a `destination:` field defined (absolute path)
+- The profile destination directory must exist
+- Cannot be combined with `create_profile_folders: true`
 
 ### File Stability Detection
 
@@ -488,6 +508,26 @@ Output:
 └── Extras/
     └── Trailer.mkv
 ```
+
+### Resource-Limited Watchfolder
+
+Limit concurrent jobs to avoid overwhelming slow storage:
+
+```yaml
+# ~/.config/videotranscode/watchfolders/nas-queue.yaml
+watchfolder_location: /mnt/nas/encode-queue
+watchfolder_type: media
+scan_interval: 60
+stability_scans: 3
+
+profiles:
+  - x265-balanced
+
+destination: /mnt/nas/encoded/
+max_concurrent_jobs: 1  # Only 1 job at a time from this watchfolder
+```
+
+This prevents multiple concurrent encodes from saturating network bandwidth when source/destination are on slow NAS storage.
 
 ### Multi-User Shared Watchfolder
 

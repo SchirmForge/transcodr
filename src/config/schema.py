@@ -72,6 +72,10 @@ class StorageConfig(BaseModel):
         default_factory=lambda: Path.home() / "Videos",
         description="Base path for $root_media placeholder in command files. Supports ~ and $USER.",
     )
+    profile_name_separator: str = Field(
+        default="_",
+        description="Separator between filename and profile name (for append_profile_name)",
+    )
 
 
 class LoggingConfig(BaseModel):

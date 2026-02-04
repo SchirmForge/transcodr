@@ -3,7 +3,6 @@
 from .models import (
     JobStatus,
     OutputMode,
-    RequestMode,
     EncodingRequest,
     WatchFolderInfo,
     JobInfo,
@@ -13,7 +12,6 @@ from .models import (
     SubmitJobResponse,
     JobListResponse,
     CancelJobResponse,
-    WatchFolderListResponse,
 )
 from .queue import JobQueue
 
@@ -21,7 +19,6 @@ __all__ = [
     # Models
     "JobStatus",
     "OutputMode",
-    "RequestMode",
     "EncodingRequest",
     "WatchFolderInfo",
     "JobInfo",
@@ -31,7 +28,6 @@ __all__ = [
     "SubmitJobResponse",
     "JobListResponse",
     "CancelJobResponse",
-    "WatchFolderListResponse",
     # Queue
     "JobQueue",
 ]

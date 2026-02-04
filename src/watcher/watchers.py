@@ -12,272 +12,13 @@ from typing import Optional, TYPE_CHECKING
 
 from .folder_processor import FolderProcessor, PendingFile, is_file_ready
 from .inotify_watcher import InotifyWatcher, is_local_filesystem, INOTIFY_AVAILABLE
-from ..api.models import EncodingRequest, OutputMode, WatchFolderInfo, WatchfolderContext, process_encoding_request
+from ..api.models import EncodingRequest, OutputMode, WatchfolderContext, process_encoding_request
 from ..core.hash import compute_file_fingerprint
 
 if TYPE_CHECKING:
     from ..api.queue import JobQueue
 
 logger = logging.getLogger(__name__)
-
-
-class WatchFolder:
-    """Represents a single watch folder."""
-
-    def __init__(self, request: EncodingRequest):
-        self.id = str(uuid.uuid4())
-        self.path = Path(request.source)
-        self.profiles = request.profiles
-        self.output_mode = request.output_mode
-        self.destination = request.destination
-        self.preserve_structure = request.preserve_structure
-        self.recursive = request.recursive
-        self.file_patterns = request.file_patterns
-        self.min_age_seconds = request.min_age_seconds
-        self.hardware_accel = request.hardware_accel
-        self.priority = request.priority
-        self.backup = request.backup
-        self.backup_dir = request.backup_dir
-
-        # State
-        self.active = True
-        self.files_processed = 0
-        self.last_activity: Optional[datetime] = None
-
-        # Track processed files (to avoid re-processing)
-        self._processed_files: set[str] = set()
-        self._pending_files: dict[str, float] = {}  # path -> first_seen_time
-
-    def to_info(self) -> WatchFolderInfo:
-        """Convert to WatchFolderInfo model."""
-        return WatchFolderInfo(
-            id=self.id,
-            path=str(self.path),
-            profiles=self.profiles,
-            output_mode=self.output_mode,
-            destination=self.destination,
-            preserve_structure=self.preserve_structure,
-            recursive=self.recursive,
-            file_patterns=self.file_patterns,
-            min_age_seconds=self.min_age_seconds,
-            hardware_accel=self.hardware_accel,
-            priority=self.priority,
-            active=self.active,
-            files_processed=self.files_processed,
-            last_activity=self.last_activity,
-        )
-
-    def matches_pattern(self, filename: str) -> bool:
-        """Check if filename matches any of the file patterns."""
-        return any(fnmatch(filename.lower(), pattern.lower()) for pattern in self.file_patterns)
-
-    def is_file_ready(self, file_path: Path) -> bool:
-        """
-        Check if file is ready to be processed.
-
-        A file is ready when:
-        - It has been seen for at least min_age_seconds
-        - It's not currently being written (size is stable)
-        """
-        path_str = str(file_path)
-
-        # Check if already processed
-        if path_str in self._processed_files:
-            return False
-
-        # Get file modification time
-        try:
-            mtime = file_path.stat().st_mtime
-            age = time.time() - mtime
-        except (OSError, FileNotFoundError):
-            return False
-
-        # Track pending files
-        if path_str not in self._pending_files:
-            self._pending_files[path_str] = time.time()
-            return False
-
-        # Check if file is old enough
-        time_tracked = time.time() - self._pending_files[path_str]
-        if age < self.min_age_seconds or time_tracked < self.min_age_seconds:
-            return False
-
-        return True
-
-    def mark_processed(self, file_path: Path):
-        """Mark a file as processed."""
-        path_str = str(file_path)
-        self._processed_files.add(path_str)
-        self._pending_files.pop(path_str, None)
-        self.files_processed += 1
-        self.last_activity = datetime.now()
-
-    def get_files_to_process(self) -> list[Path]:
-        """Get list of files ready to be processed."""
-        files = []
-
-        if not self.path.exists():
-            logger.warning(f"Watch folder does not exist: {self.path}")
-            return files
-
-        # Scan directory
-        if self.recursive:
-            scan_iter = self.path.rglob("*")
-        else:
-            scan_iter = self.path.glob("*")
-
-        for file_path in scan_iter:
-            if not file_path.is_file():
-                continue
-
-            if not self.matches_pattern(file_path.name):
-                continue
-
-            if self.is_file_ready(file_path):
-                files.append(file_path)
-
-        return files
-
-
-class WatchFolderManager:
-    """
-    Manages multiple watch folders.
-
-    Periodically scans watch folders for new files and submits
-    encoding jobs to the queue.
-    """
-
-    def __init__(self, job_queue: "JobQueue", scan_interval: float = 10.0):
-        """
-        Initialize watch folder manager.
-
-        Args:
-            job_queue: Job queue to submit jobs to
-            scan_interval: How often to scan folders (seconds)
-        """
-        self.job_queue = job_queue
-        self.scan_interval = scan_interval
-
-        self._folders: dict[str, WatchFolder] = {}
-        self._running = False
-        self._scan_task: Optional[asyncio.Task] = None
-
-    async def start(self):
-        """Start the watch folder manager."""
-        self._running = True
-        self._scan_task = asyncio.create_task(self._scan_loop())
-        logger.info(f"Watch folder manager started (scan interval: {self.scan_interval}s)")
-
-    async def stop(self):
-        """Stop the watch folder manager."""
-        self._running = False
-        if self._scan_task:
-            self._scan_task.cancel()
-            try:
-                await self._scan_task
-            except asyncio.CancelledError:
-                pass
-        logger.info("Watch folder manager stopped")
-
-    async def register(self, request: EncodingRequest) -> str:
-        """
-        Register a new watch folder.
-
-        Args:
-            request: Encoding request with mode=watch
-
-        Returns:
-            Watch folder ID
-        """
-        folder = WatchFolder(request)
-        self._folders[folder.id] = folder
-        logger.info(f"Registered watch folder {folder.id}: {folder.path}")
-        return folder.id
-
-    async def unregister(self, folder_id: str) -> bool:
-        """Remove a watch folder."""
-        if folder_id in self._folders:
-            del self._folders[folder_id]
-            logger.info(f"Unregistered watch folder: {folder_id}")
-            return True
-        return False
-
-    async def get_folder(self, folder_id: str) -> Optional[WatchFolderInfo]:
-        """Get watch folder info."""
-        folder = self._folders.get(folder_id)
-        return folder.to_info() if folder else None
-
-    async def list_folders(self) -> list[WatchFolderInfo]:
-        """List all watch folders."""
-        return [folder.to_info() for folder in self._folders.values()]
-
-    async def pause(self, folder_id: str) -> bool:
-        """Pause a watch folder."""
-        folder = self._folders.get(folder_id)
-        if folder:
-            folder.active = False
-            logger.info(f"Paused watch folder: {folder_id}")
-            return True
-        return False
-
-    async def resume(self, folder_id: str) -> bool:
-        """Resume a watch folder."""
-        folder = self._folders.get(folder_id)
-        if folder:
-            folder.active = True
-            logger.info(f"Resumed watch folder: {folder_id}")
-            return True
-        return False
-
-    async def _scan_loop(self):
-        """Background task to periodically scan watch folders."""
-        while self._running:
-            try:
-                await self._scan_all_folders()
-            except Exception as e:
-                logger.error(f"Error scanning watch folders: {e}", exc_info=True)
-
-            await asyncio.sleep(self.scan_interval)
-
-    async def _scan_all_folders(self):
-        """Scan all active watch folders for new files."""
-        for folder_id, folder in list(self._folders.items()):
-            if not folder.active:
-                continue
-
-            try:
-                files = folder.get_files_to_process()
-
-                for file_path in files:
-                    # Create encoding request for this file
-                    request = EncodingRequest(
-                        mode="encode",
-                        profiles=folder.profiles,
-                        source=str(file_path),
-                        output_mode=folder.output_mode,
-                        destination=folder.destination,
-                        preserve_structure=folder.preserve_structure,
-                        backup=folder.backup,
-                        backup_dir=folder.backup_dir,
-                        hardware_accel=folder.hardware_accel,
-                        priority=folder.priority,
-                    )
-
-                    # Submit job
-                    job_ids = await self.job_queue.submit(request)
-
-                    if job_ids:
-                        folder.mark_processed(file_path)
-                        logger.info(
-                            f"Watch folder {folder_id}: submitted {len(job_ids)} job(s) "
-                            f"for {file_path.name}"
-                        )
-
-            except Exception as e:
-                logger.error(
-                    f"Error processing watch folder {folder_id}: {e}",
-                    exc_info=True
-                )
 
 
 class CommandFileWatcher:
@@ -292,7 +33,6 @@ class CommandFileWatcher:
         self,
         watch_path: Path,
         job_queue: "JobQueue",
-        watch_manager: WatchFolderManager,
         scan_interval: float = 5.0,
         root_media: Optional[Path] = None,
     ):
@@ -302,13 +42,11 @@ class CommandFileWatcher:
         Args:
             watch_path: Directory to watch for command files
             job_queue: Job queue to submit jobs to
-            watch_manager: Watch folder manager for watch requests
             scan_interval: How often to scan (seconds)
             root_media: Base path for $root_media placeholder expansion
         """
         self.watch_path = watch_path
         self.job_queue = job_queue
-        self.watch_manager = watch_manager
         self.scan_interval = scan_interval
         self.root_media = root_media or Path.home() / "Videos"
 
@@ -378,15 +116,11 @@ class CommandFileWatcher:
                             self._move_to_failed(yaml_file, issues)
                             continue
 
-                        # Process based on mode
-                        if request.mode.value == "watch":
-                            await self.watch_manager.register(request)
-                            logger.info(f"Registered watch folder from: {yaml_file.name}")
-                        else:
-                            job_ids = await self.job_queue.submit(request)
-                            logger.info(
-                                f"Submitted {len(job_ids)} job(s) from: {yaml_file.name}"
-                            )
+                        # Submit encoding job(s)
+                        job_ids = await self.job_queue.submit(request)
+                        logger.info(
+                            f"Submitted {len(job_ids)} job(s) from: {yaml_file.name}"
+                        )
 
                         # Move to processed
                         self._move_to_processed(yaml_file)
@@ -725,25 +459,32 @@ class MediaFileWatcher:
         """
         path_str = str(file_path)
 
-        # Destination is required (validated at startup)
-        destination = self.config.destination
+        # Determine destination - either use profile destinations or a fixed folder
+        if self.config.use_profile_destination:
+            # Use each profile's destination field
+            destination_str = "profile"
+        else:
+            # Use the configured destination folder
+            destination = self.config.destination
 
-        # Calculate destination path for folder drops with preserve_folder_structure
-        if folder_key and self.config.preserve_folder_structure:
-            # folder_key is the dropped folder path (e.g., /wf-media/test1)
-            # file_path is the file inside (e.g., /wf-media/test1/01/video.mkv)
-            # We want to preserve: test1/01/ relative to destination
-            folder_path = Path(folder_key)
-            try:
-                # Get path relative to the dropped folder (e.g., 01/video.mkv)
-                relative_from_folder = file_path.relative_to(folder_path)
-                # Get the subdirectory part (e.g., 01)
-                relative_subdir = relative_from_folder.parent
-                # Final destination includes folder name and subdir
-                destination = destination / folder_path.name / relative_subdir
-            except ValueError:
-                # file_path is not inside folder_key - shouldn't happen, but fallback
-                logger.warning(f"Media watcher: {file_path} not inside folder {folder_path}")
+            # Calculate destination path for folder drops with preserve_folder_structure
+            if folder_key and self.config.preserve_folder_structure:
+                # folder_key is the dropped folder path (e.g., /wf-media/test1)
+                # file_path is the file inside (e.g., /wf-media/test1/01/video.mkv)
+                # We want to preserve: test1/01/ relative to destination
+                folder_path = Path(folder_key)
+                try:
+                    # Get path relative to the dropped folder (e.g., 01/video.mkv)
+                    relative_from_folder = file_path.relative_to(folder_path)
+                    # Get the subdirectory part (e.g., 01)
+                    relative_subdir = relative_from_folder.parent
+                    # Final destination includes folder name and subdir
+                    destination = destination / folder_path.name / relative_subdir
+                except ValueError:
+                    # file_path is not inside folder_key - shouldn't happen, but fallback
+                    logger.warning(f"Media watcher: {file_path} not inside folder {folder_path}")
+
+            destination_str = str(destination)
 
         # Compute file fingerprint for tracking
         try:
@@ -757,16 +498,16 @@ class MediaFileWatcher:
         # Build request with watchfolder context
         # JobRunner handles: temp copy (optional), final rename to .processed/.failed or delete
         request = EncodingRequest(
-            mode="encode",
             profiles=self.config.profiles,
             source=str(file_path),
             output_mode="destination",
-            destination=str(destination),
+            destination=destination_str,
             preserve_structure=self.config.preserve_folder_structure,
             backup=False,
             hardware_accel=self.config.hardware_accel,
             priority=self.config.priority,
             append_profile_name=self.config.append_profile_name,
+            max_concurrent_jobs=self.config.max_concurrent_jobs,
             watchfolder_context=WatchfolderContext(
                 file_hash=file_hash,
                 keep_processed_files=self.config.keep_processed_files,

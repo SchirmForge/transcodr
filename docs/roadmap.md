@@ -1,6 +1,6 @@
 # VideoTranscode Roadmap
 
-## Current Version: 0.2.1
+## Current Version: 0.2.3
 
 ## Use Cases Overview
 
@@ -14,9 +14,9 @@
 | 6 | Hardware acceleration | ✅ Done | VAAPI auto-detection and selection |
 | 7 | Parallel encoding | ✅ Done | Configurable max_concurrent_jobs |
 | 8 | Folder drop processing | ✅ Done | Drop folders with nested subdirectories |
-| 9 | Notifications | ❌ Pending | Desktop, webhooks, Signal/Pushover |
-| 10 | Video filters | ❌ Pending | Resize, crop, deinterlace, logo |
-| 11 | Distributed encoding | ❌ Pending | Multiple workers |
+| 9 | Notifications | ❌ Pending | Email, Webhook, Desktop, Pushover, Gotify, ntfy |
+| 10 | Video filters | ❌ Pending | Scale, crop, deinterlace, denoise, watermark |
+| 11 | Distributed encoding | ❌ Pending | Controller/worker architecture |
 
 ---
 
@@ -95,52 +95,95 @@
 
 ---
 
+## Completed Features (v0.2.2)
+
+### Extract Profiles
+- [x] Stream copy support (`copy_streams`/`copy`)
+- [x] Time-based extraction (`start_time`, `duration`)
+- [x] Built-in extract profiles (3m at 3, 15, 30, 60, 90)
+
+### Stream Mapping
+- [x] `audio.include_all` and `subtitles.include_all` (default: true)
+- [x] Explicit `-map 0:a?` / `-map 0:s?` handling
+- [x] VAAPI filter path uses `-filter_complex` with named outputs
+
+### Container Handling
+- [x] Temp output uses profile `container` (not source extension)
+- [x] Profile loaded earlier to set output container reliably
+
+### Watchfolder Reliability
+- [x] Hash-based file tracking (no `.processing` rename)
+- [x] Final rename/delete only after all profiles complete
+- [x] Ref-count based finalization (tracks partial failures)
+
+### Runtime Fixes
+- [x] Profile cache reload via `/reload` endpoint
+- [x] SQLite autocommit to avoid nested transaction errors
+
+---
+
+## Completed Features (v0.2.3)
+
+### Profile-Level Destinations
+- [x] Profile `destination:` field for absolute output path
+- [x] Path placeholder support (`$root_media`, `~`, `$HOME`)
+- [x] `destination: profile` directive for commands/watchfolders
+- [x] Validation that profile destination directory exists
+- [x] `create_profile_folders` cannot be mixed with `destination: profile`
+
+### Concurrency Control
+- [x] Per-command/watchfolder `max_concurrent_jobs` limit
+- [x] Source-level tracking with database `source_id` column
+- [x] Respects global limit while allowing per-source restrictions
+
+### Output Naming
+- [x] `profile_name_separator` config option (default: `_`)
+- [x] Configurable separator for `append_profile_name` feature
+
+---
+
 ## Planned Features
 
-### Version 0.2.2: Extract Profiles
-- [ ] Stream copy support (`copy: true` for video/audio)
-- [ ] Time-based extraction (`start_time`, `duration`)
-- [ ] Built-in extract profiles (3min samples at 3', 15', 30', 60', 90')
-
-### Version 0.2.3: Audio File Encoding
-- [ ] Lossless audio support (FLAC, WAV, ALAC, APE, WavPack, DSD)
-- [ ] Audio-specific encoding profiles
-- [ ] Additional parameters: profile/command/watchfolders max_concurrent_jobs, destination folder per profile, include profile in destination file names
-
 ### Version 0.2.4: Subtitles Management
-- [ ] Auto-detect external subtitle files (.srt, .ass, .ssa, .sub, .vtt)
-- [ ] Auto-embed subtitles with language detection
-- [ ] Language pattern matching (en, eng, english → eng)
-- [ ] Never burn-in subtitles (always as separate streams)
+- [ ] Subtitles are never burned in (always separate streams)
+- [ ] Auto-detect external subtitle files (`.srt`, `.ass`, `.ssa`, `.sub`, `.idx`, `.vtt`)
+- [ ] Language detection from filename (`.en.srt`, `.english.srt`, etc.)
+- [ ] `auto_embed_subtitles` option (default: true)
+- [ ] Copy/move other non-video files when preserving structure (nfo/jpg/txt/etc.)
 
 ### Version 0.2.5: Notifications
-- [ ] Job completion notifications
-- [ ] Batch/queue completion alerts
-- [ ] Error notifications
-- [ ] Channels: Email, Webhook, Desktop, Gotify, ntfy
+- [ ] Event types: job complete, batch complete, queue empty, error alerts
+- [ ] Channels: Email, Webhook, Desktop, Pushover, Gotify, ntfy
+- [ ] Configurable notification payloads and per-channel settings
 
-### Version 0.2.6: Web UI
-- [ ] Jobs activity/history views
-- [ ] Watch folder management
-- [ ] Profile management
-- [ ] Settings configuration
-- [ ] System status and logs
+### Version 0.2.6: Audio File Encoding
+- [ ] Lossless audio formats: FLAC, WAV, ALAC, APE, WavPack, DSD
+- [ ] Audio-specific encoding profiles
 
-### Version 0.3.1: Distributed Encoding
-- [ ] Controller/worker architecture
-- [ ] Worker types: local, LAN, remote
-- [ ] Job distribution strategies
-- [ ] File transfer for remote workers
-- [ ] Worker health monitoring
+### Version 0.2.7: Web UI
+- [ ] Left-nav layout with Jobs/Watch Folders/Profiles/Settings/System
+- [ ] Jobs activity + history views with filters and ordering
+- [ ] Job detail accordion with resubmit support
+- [ ] Watch folder status list
 
-### Version 0.3.2: Video Filters
-- [ ] Scale/resize with aspect ratio
-- [ ] Crop (black bar removal)
-- [ ] Deinterlace (yadif, bwdif)
-- [ ] Denoise, sharpen
-- [ ] Logo/watermark overlay
-- [ ] HDR to SDR tonemap
-- [ ] Filter chain generation
+### Version 0.3.1: Video Analysis Profiles
+- [ ] New `analysis` profile type with deterministic + perceptual phases
+- [ ] Technical heuristics (bpp, bitrate/resolution mismatch, re-encode signals)
+- [ ] Perceptual artifact scoring (blocking, banding, blur, ringing, temporal)
+- [ ] Profile auto-selection: AV1 vs x265 vs keep-as-is
+
+### Version 0.3.2: Distributed Encoding
+- [ ] Controller/worker architecture (local, LAN, remote)
+- [ ] Job distribution strategies (round-robin, capability, load, priority)
+- [ ] Worker registration + heartbeat monitoring
+- [ ] Remote transfer workflow (rsync/sftp/scp)
+- [ ] Phased rollout: local -> LAN -> remote -> auto-discovery
+
+### Version 0.3.3: Video Filters
+- [ ] Profile schema for filter configuration (scale, crop, deinterlace, etc.)
+- [ ] Filter-chain generation with ordering rules
+- [ ] Preset filter profiles (1080p/720p, deinterlace-only, clean-archive)
+- [ ] VAAPI filter compatibility
 
 ### Future Considerations
 - HDR metadata preservation
@@ -150,22 +193,52 @@
 
 ---
 
+## Open Bugs / Risks
+
+- Watchfolder should not start if a referenced profile is missing
+- Validate file duration for extract profiles; only create jobs that fit
+- When the runner throws an exception, mark file as `.failed` (not `.processing`)
+- Catch and log runner exceptions consistently
+- Disallow replace + disable_temp combo for multi-profile runs; enforce in runner
+- Make `duration_tolerance` disable with 0 (default 5)
+- Client job names should not include `.processing`
+- Avoid 60s fixed timeout when waiting for temp copy state
+- Add input/output FFmpeg args to fix `.mts` stream-copy artifacts
+- Add audio stream selection options (first-only vs all)
+- Web UI should allow selection of a specific workflow/command
+
+---
+
 ## Version History
 
 ### v0.3 (Planned)
-- Distributed encoding with controller/worker architecture
-- Video filters
+- Video analysis profiles (0.3.1)
+- Distributed encoding (0.3.2)
+- Video filters (0.3.3)
 
 ### v0.2 (In Progress)
 - ✅ Watch folder improvements (0.2.1) - **DONE**
-- Extract profiles (0.2.2)
-- Audio file encoding (0.2.3)
+- ✅ Extract profiles and stream mapping (0.2.2) - **DONE**
+- ✅ Profile/job parameters (0.2.3) - **DONE**
 - Subtitles management (0.2.4)
 - Notifications (0.2.5)
-- Web UI (0.2.6)
+- Audio file encoding (0.2.6)
+- Web UI (0.2.7)
 
+### v0.2.3 (Current)
+- Profile-level `destination:` with path placeholder support
+- `destination: profile` directive for commands/watchfolders
+- Per-source `max_concurrent_jobs` concurrency limits
+- Configurable `profile_name_separator` in config
 
-### v0.2.1 (Current)
+### v0.2.2
+- Stream copy + extract profiles
+- Audio/subtitle stream mapping (include all)
+- Container handling fix for temp outputs
+- Watchfolder ref-count finalization
+- Profile cache reload + SQLite autocommit fix
+
+### v0.2.1
 - `$root_media` placeholder and environment variable expansion
 - Folder drop processing with nested subdirectory support
 - Folder structure preservation for dropped folders

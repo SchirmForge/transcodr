@@ -96,6 +96,7 @@ Profiles are defined in YAML with the following structure:
 | `hardware_variants` | object | No | null | Hardware-specific overrides |
 | `recommended_concurrency` | int | No | null | Optimal concurrent jobs for this profile |
 | `tags` | list | No | `[]` | Categorization tags |
+| `destination` | string | No | null | Absolute output path (used with `destination: profile` in requests) |
 
 ### Video Settings (`video:`)
 
@@ -201,6 +202,62 @@ subtitles:
   copy: false
   codec: srt
 ```
+
+---
+
+## Profile Destinations
+
+Profiles can define their own output destination folder. This is useful when you want different profiles to output to different locations.
+
+### Defining a Profile Destination
+
+```yaml
+name: x265-archival
+description: "High quality archival encoding"
+destination: /media/archive  # Absolute path for output
+
+video:
+  codec: libx265
+  crf: 18
+  preset: slow
+
+audio:
+  copy: true
+```
+
+### Path Placeholders
+
+Profile destinations support path placeholders:
+
+| Placeholder | Expands To |
+|-------------|------------|
+| `$root_media` | Value of `storage.root_media` in daemon config |
+| `$HOME`, `${HOME}` | User's home directory |
+| `~` | User's home directory |
+
+```yaml
+name: x265-streaming
+destination: $root_media/streaming  # Uses root_media from config
+```
+
+### Using Profile Destinations
+
+To use profile destinations, set `destination: profile` in your command or watchfolder:
+
+```yaml
+# Command file
+profiles:
+  - x265-archival     # destination: /media/archive
+  - x265-streaming    # destination: /media/streaming
+source: /media/incoming/video.mkv
+destination: profile  # Output to each profile's destination
+```
+
+### Requirements
+
+- Profile destination must be an absolute path
+- The directory must exist (validated at job creation)
+- Cannot be combined with `create_profile_folders: true` in the request
 
 ---
 

@@ -76,17 +76,9 @@ class DaemonClient:
         """Retry a failed job."""
         return self._request("POST", f"/jobs/{job_id}/retry")
 
-    def list_watch_folders(self) -> dict:
-        """List runtime-registered watch folders."""
-        return self._request("GET", "/watch-folders")
-
     def list_watchfolders(self) -> dict:
         """List config-based watchfolders (from YAML files)."""
         return self._request("GET", "/watchfolders")
-
-    def remove_watch_folder(self, folder_id: str) -> dict:
-        """Remove a watch folder."""
-        return self._request("DELETE", f"/watch-folders/{folder_id}")
 
     def pause_queue(self) -> dict:
         """Pause the job queue."""
@@ -190,23 +182,15 @@ def cmd_submit(args):
         if args.recursive is not None:
             request["recursive"] = args.recursive
 
-        if args.watch:
-            request["mode"] = "watch"
-            if args.min_age:
-                request["min_age_seconds"] = args.min_age
-
     # Submit
     result = client.submit_job(request)
 
     if result['success']:
-        if result.get('watch_folder_id'):
-            print(f"Watch folder registered: {result['watch_folder_id']}")
-        else:
-            print(f"Submitted {len(result['job_ids'])} job(s):")
-            for job_id in result['job_ids'][:10]:  # Show first 10
-                print(f"  {job_id}")
-            if len(result['job_ids']) > 10:
-                print(f"  ... and {len(result['job_ids']) - 10} more")
+        print(f"Submitted {len(result['job_ids'])} job(s):")
+        for job_id in result['job_ids'][:10]:  # Show first 10
+            print(f"  {job_id}")
+        if len(result['job_ids']) > 10:
+            print(f"  ... and {len(result['job_ids']) - 10} more")
     else:
         print(f"Failed: {result['message']}")
 
@@ -478,8 +462,6 @@ def main():
     submit_parser.add_argument("--no-backup", action="store_true", help="Don't backup originals")
     submit_parser.add_argument("-r", "--recursive", type=bool, help="Process recursively")
     submit_parser.add_argument("-f", "--file", help="Load request from YAML file")
-    submit_parser.add_argument("--watch", action="store_true", help="Register as watch folder")
-    submit_parser.add_argument("--min-age", type=int, help="Min file age for watch folder (seconds)")
     submit_parser.set_defaults(func=cmd_submit)
 
     # Jobs command
