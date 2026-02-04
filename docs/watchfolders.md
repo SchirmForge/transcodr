@@ -339,11 +339,13 @@ curl -X POST http://localhost:8765/watchfolders/downloads/resume
 
 ### Reload Configuration
 
-After editing watch folder configs:
+After editing watch folder or profile configs:
 
 ```bash
 python -m src.cli.client reload
 ```
+
+This reloads watchfolder configurations and clears the profile cache, ensuring any profile changes take effect immediately.
 
 ---
 

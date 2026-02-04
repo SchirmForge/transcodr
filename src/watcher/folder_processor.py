@@ -12,9 +12,10 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class PendingFile:
-    """Tracks a file for size stability detection."""
+    """Tracks a file for size and mtime stability detection."""
     first_seen: float
     last_size: int
+    last_mtime: float
     stable_count: int = 0
 
 
@@ -30,6 +31,54 @@ class TrackedFolder:
     completed_jobs: int = 0
     failed_jobs: int = 0
     stable_scans: int = 0  # Scans with no new files
+
+
+def is_file_ready(
+    file_path: Path,
+    pending: PendingFile,
+    stability_scans: int,
+) -> bool:
+    """
+    Check if a file is stable and ready for processing.
+
+    A file is ready when both size AND mtime haven't changed
+    for `stability_scans` consecutive checks.
+
+    Args:
+        file_path: Path to file (for logging and stat)
+        pending: PendingFile tracking object (updated in place)
+        stability_scans: Required consecutive stable scans
+
+    Returns:
+        True if file is ready for processing, False otherwise
+        Returns False if file disappeared (caller should handle cleanup)
+    """
+    try:
+        stat_info = file_path.stat()
+        current_size = stat_info.st_size
+        current_mtime = stat_info.st_mtime
+    except (OSError, FileNotFoundError):
+        return False
+
+    # Check both size AND mtime for stability (catches cache flush pauses)
+    size_stable = current_size == pending.last_size
+    mtime_stable = current_mtime == pending.last_mtime
+
+    if size_stable and mtime_stable:
+        pending.stable_count += 1
+        logger.debug(
+            f"File {file_path.name} stable count: {pending.stable_count}/{stability_scans}"
+        )
+    else:
+        if not size_stable:
+            logger.debug(f"File {file_path.name} size changed: {pending.last_size} -> {current_size}")
+        if not mtime_stable:
+            logger.debug(f"File {file_path.name} mtime changed")
+        pending.last_size = current_size
+        pending.last_mtime = current_mtime
+        pending.stable_count = 0
+
+    return pending.stable_count >= stability_scans
 
 
 class FolderProcessor:
@@ -155,7 +204,9 @@ class FolderProcessor:
 
             # New file found
             try:
-                file_size = file_path.stat().st_size
+                stat_info = file_path.stat()
+                file_size = stat_info.st_size
+                file_mtime = stat_info.st_mtime
             except (OSError, FileNotFoundError):
                 continue
 
@@ -163,6 +214,7 @@ class FolderProcessor:
             folder.pending_files[file_key] = PendingFile(
                 first_seen=time.time(),
                 last_size=file_size,
+                last_mtime=file_mtime,
             )
             new_files.append(file_path)
             logger.debug(f"New file detected in folder: {file_path.name}")
@@ -203,25 +255,14 @@ class FolderProcessor:
         if file_key in folder.submitted_files:
             return False
 
-        try:
-            current_size = file_path.stat().st_size
-        except (OSError, FileNotFoundError):
-            # File disappeared
+        # Use shared stability check
+        result = is_file_ready(file_path, pending, self.stability_scans)
+
+        # Cleanup if file disappeared
+        if not file_path.exists():
             folder.pending_files.pop(file_key, None)
-            return False
 
-        if current_size == pending.last_size:
-            pending.stable_count += 1
-            logger.debug(
-                f"File {file_path.name} stable count: "
-                f"{pending.stable_count}/{self.stability_scans}"
-            )
-        else:
-            pending.last_size = current_size
-            pending.stable_count = 0
-            logger.debug(f"File {file_path.name} size changed, resetting stability")
-
-        return pending.stable_count >= self.stability_scans
+        return result
 
     def get_ready_files(self, folder_key: str) -> list[Path]:
         """

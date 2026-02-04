@@ -40,6 +40,11 @@ class AudioSettings(BaseModel):
     """Audio encoding settings."""
 
     copy_streams: bool = Field(default=True, description="Copy audio stream without re-encoding", alias="copy")
+    include_all: bool = Field(
+        default=True,
+        description="Include all audio streams from source (vs only best one)",
+        alias="all"
+    )
     codec: Optional[str] = Field(default=None, description="Audio codec (e.g., aac, opus, libmp3lame)")
     bitrate: Optional[str] = Field(default=None, description="Audio bitrate (e.g., '192k', '128k')")
     sample_rate: Optional[int] = Field(default=None, description="Audio sample rate (e.g., 48000, 44100)")
@@ -51,16 +56,21 @@ class AudioSettings(BaseModel):
         description="Additional FFmpeg audio options"
     )
 
-    model_config = {"populate_by_name": True}  # Allow both 'copy' and 'copy_streams'
+    model_config = {"populate_by_name": True}
 
 
 class SubtitleSettings(BaseModel):
     """Subtitle handling settings."""
 
     copy_streams: bool = Field(default=True, description="Copy subtitle streams", alias="copy")
+    include_all: bool = Field(
+        default=True,
+        description="Include all subtitle streams from source (vs only best one)",
+        alias="all"
+    )
     codec: Optional[str] = Field(default=None, description="Subtitle codec (e.g., srt, ass)")
 
-    model_config = {"populate_by_name": True}  # Allow both 'copy' and 'copy_streams'
+    model_config = {"populate_by_name": True}
 
 
 class HardwareVariant(BaseModel):
@@ -174,13 +184,44 @@ class Profile(BaseModel):
         if self.duration:
             args.extend(["-t", self.duration])
 
+        # Determine if we need explicit stream mapping
+        need_explicit_mapping = self.audio.include_all or self.subtitles.include_all
+        uses_vaapi_filter = (
+            not is_video_copy
+            and video_settings.hwaccel == "vaapi"
+            and video_settings.codec
+            and "vaapi" in video_settings.codec.lower()
+        )
+
+        # Stream mapping - must come before codec options
+        if need_explicit_mapping:
+            if uses_vaapi_filter:
+                # VAAPI with filter: use filter_complex for reliable mapping
+                args.extend(["-filter_complex", "[0:v]format=nv12,hwupload[v]"])
+                args.extend(["-map", "[v]"])
+            else:
+                # Map video stream (will use -vf if specified)
+                args.extend(["-map", "0:v"])
+
+            # Map audio streams
+            if self.audio.include_all:
+                args.extend(["-map", "0:a?"])  # ? = optional (don't fail if no audio)
+            else:
+                args.extend(["-map", "0:a:0?"])  # Only first audio stream
+
+            # Map subtitle streams
+            if self.subtitles.include_all:
+                args.extend(["-map", "0:s?"])  # ? = optional (don't fail if no subtitles)
+            else:
+                args.extend(["-map", "0:s:0?"])  # Only first subtitle stream
+
         # Video settings
         if is_video_copy:
             # Stream copy mode - no encoding
             args.extend(["-c:v", "copy"])
         else:
-            # VAAPI requires video filter to upload frames to GPU
-            if video_settings.hwaccel == "vaapi" and video_settings.codec and "vaapi" in video_settings.codec.lower():
+            # VAAPI filter (only if not using filter_complex above)
+            if uses_vaapi_filter and not need_explicit_mapping:
                 args.extend(["-vf", "format=nv12,hwupload"])
 
             # Video codec (required when not copying)

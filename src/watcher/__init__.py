@@ -2,9 +2,9 @@
 
 from .schema import WatchfolderType, WatchfolderConfig
 from .manager import WatchfolderConfigManager
-from .folder_processor import FolderProcessor, TrackedFolder, PendingFile as FolderPendingFile
+from .folder_processor import FolderProcessor, TrackedFolder, PendingFile, is_file_ready
+from .inotify_watcher import InotifyWatcher, is_local_filesystem, INOTIFY_AVAILABLE
 from .watchers import (
-    PendingFile,
     WatchFolder,
     WatchFolderManager,
     CommandFileWatcher,
@@ -22,9 +22,13 @@ __all__ = [
     # Folder processor
     "FolderProcessor",
     "TrackedFolder",
-    "FolderPendingFile",
-    # Watchers
     "PendingFile",
+    "is_file_ready",
+    # Inotify
+    "InotifyWatcher",
+    "is_local_filesystem",
+    "INOTIFY_AVAILABLE",
+    # Watchers
     "WatchFolder",
     "WatchFolderManager",
     "CommandFileWatcher",

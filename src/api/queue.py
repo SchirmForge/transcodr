@@ -17,6 +17,7 @@ from .models import (
     JobStatus,
     QueueInfo,
     OutputMode,
+    WatchfolderContext,
 )
 from ..jobs import Job, JobRunner, JobState, OutputMode
 from ..profiles.manager import ProfileManager
@@ -115,9 +116,20 @@ class JobQueue:
         if old_value != max_concurrent:
             logger.info(f"Max concurrent jobs updated: {old_value} -> {max_concurrent}")
 
+    def clear_profile_cache(self) -> None:
+        """Clear the profile cache to force reload from disk on next use."""
+        self._profile_manager.clear_cache()
+
     def _init_db(self):
         """Initialize SQLite database."""
-        self._conn = sqlite3.connect(str(self.db_path), check_same_thread=False)
+        # Use isolation_level=None for autocommit mode to avoid
+        # "cannot start a transaction within a transaction" errors
+        # when multiple concurrent jobs complete simultaneously
+        self._conn = sqlite3.connect(
+            str(self.db_path),
+            check_same_thread=False,
+            isolation_level=None,
+        )
         self._conn.row_factory = sqlite3.Row
 
         # Create jobs table
@@ -164,6 +176,13 @@ class JobQueue:
             logger.info("Migrating database: adding delete_source column")
             self._conn.execute("ALTER TABLE jobs ADD COLUMN delete_source BOOLEAN DEFAULT 0")
 
+        # Migration: add watchfolder_context column if it doesn't exist
+        try:
+            self._conn.execute("SELECT watchfolder_context FROM jobs LIMIT 1")
+        except sqlite3.OperationalError:
+            logger.info("Migrating database: adding watchfolder_context column")
+            self._conn.execute("ALTER TABLE jobs ADD COLUMN watchfolder_context TEXT")
+
         # Create index for efficient queries
         self._conn.execute("""
             CREATE INDEX IF NOT EXISTS idx_jobs_status ON jobs(status)
@@ -172,7 +191,6 @@ class JobQueue:
             CREATE INDEX IF NOT EXISTS idx_jobs_priority ON jobs(priority DESC, created_at ASC)
         """)
 
-        self._conn.commit()
         logger.info(f"Database initialized: {self.db_path}")
 
     async def submit(self, request: EncodingRequest) -> list[str]:
@@ -323,6 +341,12 @@ class JobQueue:
                     profile_index,
                 )
 
+                # Serialize watchfolder_context if present
+                watchfolder_context_json = None
+                if request.watchfolder_context:
+                    import json
+                    watchfolder_context_json = json.dumps(request.watchfolder_context.model_dump())
+
                 # Insert job into database
                 async with self._lock:
                     self._conn.execute("""
@@ -330,8 +354,8 @@ class JobQueue:
                             id, status, profile, source_path, output_path,
                             profile_index, total_profiles, parent_job_id,
                             created_at, priority, hardware_accel, backup, backup_dir,
-                            source_size_bytes, output_mode, delete_source
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                            source_size_bytes, output_mode, delete_source, watchfolder_context
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """, (
                         job_id,
                         JobStatus.PENDING.value,
@@ -349,9 +373,9 @@ class JobQueue:
                         file_path.stat().st_size if file_path.exists() else 0,
                         request.output_mode.value,
                         request.delete_source,
+                        watchfolder_context_json,
                     ))
-                    self._conn.commit()
-
+        
                 job_ids.append(job_id)
 
                 # Track job-to-folder association for completion handling
@@ -467,7 +491,7 @@ class JobQueue:
                 cursor = self._conn.execute(
                     """SELECT id, profile, source_path, output_path, hardware_accel,
                               profile_index, total_profiles, parent_job_id, output_mode,
-                              delete_source
+                              delete_source, watchfolder_context
                        FROM jobs WHERE id = ?""",
                     (job_id,)
                 )
@@ -485,6 +509,13 @@ class JobQueue:
             output_mode_str = row["output_mode"] or "replace"
             output_mode = OutputMode(output_mode_str)
             delete_source = bool(row["delete_source"]) if row["delete_source"] is not None else False
+
+            # Deserialize watchfolder_context if present
+            watchfolder_context = None
+            if row["watchfolder_context"]:
+                import json
+                ctx_data = json.loads(row["watchfolder_context"])
+                watchfolder_context = WatchfolderContext(**ctx_data)
 
             # Create Job object for runner
             job = Job(
@@ -507,6 +538,7 @@ class JobQueue:
                     profile_index=profile_index,
                     total_profiles=total_profiles,
                     parent_job_id=parent_job_id,
+                    watchfolder_context=watchfolder_context,
                 )
 
             completed_job = await loop.run_in_executor(self._executor, run_job)
@@ -541,7 +573,6 @@ class JobQueue:
                     job.frames_total,
                     job_id,
                 ))
-                self._conn.commit()
         except Exception as e:
             logger.warning(f"Failed to update progress for {job_id}: {e}")
 
@@ -557,7 +588,6 @@ class JobQueue:
                 self._conn.execute("""
                     UPDATE jobs SET status = ? WHERE id = ?
                 """, (status.value, job_id))
-            self._conn.commit()
 
     async def _update_job_completed(self, job_id: str, job: Job):
         """Update job as completed."""
@@ -577,7 +607,6 @@ class JobQueue:
                 str(job.output_path) if job.output_path else None,
                 job_id,
             ))
-            self._conn.commit()
             logger.info(f"Job completed: {job_id}")
 
         # Notify folder processor if job belongs to a folder
@@ -598,7 +627,6 @@ class JobQueue:
                 error,
                 job_id,
             ))
-            self._conn.commit()
             logger.error(f"Job failed: {job_id} - {error}")
 
         # Notify folder processor if job belongs to a folder
@@ -689,7 +717,6 @@ class JobQueue:
                     completed_at = NULL
                 WHERE id = ?
             """, (JobStatus.PENDING.value, job_id))
-            self._conn.commit()
 
         return await self.get_job(job_id)
 
@@ -734,7 +761,6 @@ class JobQueue:
                 "DELETE FROM jobs WHERE status = ?",
                 (JobStatus.COMPLETED.value,)
             )
-            self._conn.commit()
             return cursor.rowcount
 
     async def clear_failed(self) -> int:
@@ -744,7 +770,6 @@ class JobQueue:
                 "DELETE FROM jobs WHERE status = ?",
                 (JobStatus.FAILED.value,)
             )
-            self._conn.commit()
             return cursor.rowcount
 
     async def purge_all(self, force: bool = False) -> int:
@@ -774,7 +799,6 @@ class JobQueue:
                     (JobStatus.PENDING.value, JobStatus.RUNNING.value)
                 )
 
-            self._conn.commit()
             count = cursor.rowcount
             logger.info(f"Purged {count} jobs from database (force={force})")
             return count

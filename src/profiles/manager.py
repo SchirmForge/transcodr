@@ -32,6 +32,13 @@ class ProfileManager:
         self.user_profile_dir = user_profile_dir
         self._cache: dict[str, Profile] = {}
 
+    def clear_cache(self):
+        """Clear the profile cache to force reload from disk."""
+        count = len(self._cache)
+        self._cache.clear()
+        if count > 0:
+            logger.info(f"Cleared {count} cached profiles")
+
     def list_profiles(self) -> list[str]:
         """
         List all available profile names.

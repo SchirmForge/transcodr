@@ -494,9 +494,11 @@ async def reload_config():
         _config = ConfigManager.load_config()
         logger.info(f"Configuration reloaded from: {ConfigManager.DEFAULT_CONFIG_PATH}")
 
-        # Update job queue settings
+        # Update job queue settings and clear profile cache
         if _job_queue:
             _job_queue.set_max_concurrent(_config.daemon.max_concurrent_jobs)
+            _job_queue.clear_profile_cache()
+            logger.info("Profile cache cleared")
 
         # Restart watchfolder service
         if _watchfolder_service:

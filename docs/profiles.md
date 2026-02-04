@@ -141,6 +141,7 @@ video:
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
 | `copy_streams` | bool | `true` | Copy audio without re-encoding (alias: `copy`) |
+| `include_all` | bool | `true` | Include all audio streams (alias: `all`). If `false`, only best stream is included. |
 | `codec` | string | null | Audio codec (`aac`, `opus`, `libmp3lame`) |
 | `bitrate` | string | null | Audio bitrate (`192k`, `128k`) |
 | `sample_rate` | int | null | Sample rate (`48000`, `44100`) |
@@ -150,9 +151,15 @@ video:
 #### Audio Examples
 
 ```yaml
-# Copy audio (default)
+# Copy all audio streams (default)
 audio:
   copy: true
+  all: true
+
+# Copy only the best audio stream
+audio:
+  copy: true
+  all: false
 
 # Re-encode to AAC
 audio:
@@ -173,14 +180,21 @@ audio:
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
 | `copy_streams` | bool | `true` | Copy subtitle streams (alias: `copy`) |
+| `include_all` | bool | `true` | Include all subtitle streams (alias: `all`). If `false`, only best stream is included. |
 | `codec` | string | null | Subtitle codec (`srt`, `ass`) |
 
 #### Subtitle Examples
 
 ```yaml
-# Copy subtitles (default)
+# Copy all subtitle streams (default)
 subtitles:
   copy: true
+  all: true
+
+# Copy only the best subtitle stream
+subtitles:
+  copy: true
+  all: false
 
 # Convert to SRT
 subtitles:

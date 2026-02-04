@@ -31,6 +31,38 @@ class RequestMode(str, Enum):
 
 
 # =============================================================================
+# Watchfolder Context (for job file handling)
+# =============================================================================
+
+class WatchfolderContext(BaseModel):
+    """
+    Context for watchfolder job file handling.
+
+    When present, JobRunner handles:
+    - Optional temp copy (if not disable_temp_copy)
+    - Final rename to .processed/.failed (last profile) or delete
+
+    Note: No .processing rename during execution - all profiles read
+    from the original file (or temp copy).
+    """
+    file_hash: str = Field(
+        description="File fingerprint for tracking and duplicate detection"
+    )
+    keep_processed_files: bool = Field(
+        default=True,
+        description="Keep .processed files after encoding, or delete source"
+    )
+    disable_temp_copy: bool = Field(
+        default=False,
+        description="Encode directly from source without creating temp copy"
+    )
+    temp_folder: Optional[str] = Field(
+        default=None,
+        description="Override temp folder location for source copy"
+    )
+
+
+# =============================================================================
 # Encoding Request Models (for API and watch folder command files)
 # =============================================================================
 
@@ -182,6 +214,12 @@ class EncodingRequest(BaseModel):
     delete_source: bool = Field(
         default=False,
         description="Delete source file after successful encoding"
+    )
+
+    # Watchfolder context (for MediaFileWatcher submissions)
+    watchfolder_context: Optional[WatchfolderContext] = Field(
+        default=None,
+        description="Context for watchfolder jobs - when present, JobRunner handles all file operations"
     )
 
     @model_validator(mode='before')

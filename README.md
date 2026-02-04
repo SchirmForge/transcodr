@@ -14,7 +14,24 @@ A robust, production-ready video transcoding system with daemon, CLI, and API in
 - **SQLite persistence** - Job queue survives daemon restarts
 - **Portable configs** - Use `$root_media`, `$HOME`, `~` placeholders in paths
 
-## Project Status: Version 0.2.1
+## Project Status: Version 0.2.2
+
+### What's New in v0.2.2
+
+**Multi-Profile Concurrent Encoding**
+- Fixed race conditions when encoding with multiple profiles concurrently
+- Ref-count based finalization ensures proper cleanup when all profiles complete
+- `disable_temp_copy` option now works correctly for all profiles
+
+**Stream Handling**
+- Include all audio streams from source (`audio.all: true`, default)
+- Include all subtitle streams from source (`subtitles.all: true`, default)
+- Proper stream mapping with VAAPI hardware encoding
+
+**Reliability**
+- Fixed SQLite transaction errors under concurrent load
+- Fixed container format issues (temp files now use profile's container)
+- Profile cache clears on daemon reload for immediate profile updates
 
 ### What's New in v0.2.1
 

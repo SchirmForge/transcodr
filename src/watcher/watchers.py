@@ -10,21 +10,15 @@ from fnmatch import fnmatch
 from pathlib import Path
 from typing import Optional, TYPE_CHECKING
 
-from .folder_processor import FolderProcessor
-from ..api.models import EncodingRequest, OutputMode, WatchFolderInfo, process_encoding_request
+from .folder_processor import FolderProcessor, PendingFile, is_file_ready
+from .inotify_watcher import InotifyWatcher, is_local_filesystem, INOTIFY_AVAILABLE
+from ..api.models import EncodingRequest, OutputMode, WatchFolderInfo, WatchfolderContext, process_encoding_request
+from ..core.hash import compute_file_fingerprint
 
 if TYPE_CHECKING:
     from ..api.queue import JobQueue
 
 logger = logging.getLogger(__name__)
-
-
-@dataclass
-class PendingFile:
-    """Tracks a pending file for size stability detection."""
-    first_seen: float
-    last_size: int
-    stable_count: int = 0
 
 
 class WatchFolder:
@@ -479,12 +473,36 @@ class MediaFileWatcher:
         )
         self._active_folder_keys: set[str] = set()  # Currently processing folders
 
+        # Inotify watcher for local filesystems (instant CLOSE_WRITE detection)
+        self._inotify_watcher: Optional[InotifyWatcher] = None
+        self._inotify_ready_files: set[str] = set()  # Files marked ready by inotify
+        self._use_inotify = False  # Whether inotify is active for this watcher
+
     async def start(self):
         """Start watching for media files."""
         # Validate watch directory exists - don't create it
         if not self.watch_path.exists():
             logger.error(f"Media file watcher: directory does not exist: {self.watch_path}")
             return
+
+        # Try to use inotify for instant file-ready detection on local filesystems
+        if INOTIFY_AVAILABLE and is_local_filesystem(self.watch_path):
+            try:
+                self._inotify_watcher = InotifyWatcher(
+                    watch_path=self.watch_path,
+                    callback=self._on_inotify_close,
+                    file_patterns=self.config.file_patterns,
+                )
+                if self._inotify_watcher.start():
+                    self._use_inotify = True
+                    logger.info(f"Media watcher using inotify for {self.watch_path} (local filesystem)")
+                else:
+                    logger.warning(f"Failed to start inotify, using polling for {self.watch_path}")
+            except Exception as e:
+                logger.warning(f"Inotify init failed, using polling: {e}")
+        else:
+            reason = "NFS/remote" if INOTIFY_AVAILABLE else "inotify unavailable"
+            logger.info(f"Media watcher using polling for {self.watch_path} ({reason})")
 
         self._running = True
         self._scan_task = asyncio.create_task(self._scan_loop())
@@ -496,6 +514,13 @@ class MediaFileWatcher:
     async def stop(self):
         """Stop watching."""
         self._running = False
+
+        # Stop inotify watcher
+        if self._inotify_watcher:
+            self._inotify_watcher.stop()
+            self._inotify_watcher = None
+            self._use_inotify = False
+
         if self._scan_task:
             self._scan_task.cancel()
             try:
@@ -511,12 +536,23 @@ class MediaFileWatcher:
             for pattern in self.config.file_patterns
         )
 
+    def _on_inotify_close(self, file_path: Path):
+        """
+        Callback when inotify detects CLOSE_WRITE (file copy complete).
+
+        Called from inotify thread, adds file to ready set for next scan.
+        """
+        path_str = str(file_path)
+        self._inotify_ready_files.add(path_str)
+        logger.debug(f"Media watcher: inotify marked ready: {file_path.name}")
+
     def _is_file_ready(self, file_path: Path) -> bool:
         """
-        Check if file is ready using size stability.
+        Check if file is ready for processing.
 
-        A file is ready when its size hasn't changed for
-        `stability_scans` consecutive scans.
+        Detection method depends on filesystem:
+        - Local filesystem: Uses inotify IN_CLOSE_WRITE (instant detection)
+        - NFS/remote: Uses size+mtime stability polling (fallback)
         """
         path_str = str(file_path)
 
@@ -538,41 +574,44 @@ class MediaFileWatcher:
         if processing_path.exists():
             return False
 
-        # Get current file size
-        try:
-            current_size = file_path.stat().st_size
-        except (OSError, FileNotFoundError):
-            # File disappeared or inaccessible
-            self._pending_files.pop(path_str, None)
-            return False
+        # Check if inotify marked this file as ready (CLOSE_WRITE received)
+        if path_str in self._inotify_ready_files:
+            self._inotify_ready_files.discard(path_str)
+            self._pending_files.pop(path_str, None)  # Cleanup tracking
+            logger.info(f"Media watcher: file ready (inotify): {file_path.name}")
+            return True
 
+        # First time seeing this file?
         if path_str not in self._pending_files:
-            # First time seeing this file
+            try:
+                stat_info = file_path.stat()
+            except (OSError, FileNotFoundError):
+                return False
             self._pending_files[path_str] = PendingFile(
                 first_seen=time.time(),
-                last_size=current_size,
+                last_size=stat_info.st_size,
+                last_mtime=stat_info.st_mtime,
                 stable_count=0
             )
-            logger.debug(f"Media watcher: new file detected: {file_path.name} ({current_size} bytes)")
+            if self._use_inotify:
+                logger.debug(f"Media watcher: tracking {file_path.name}, waiting for inotify CLOSE_WRITE")
+            else:
+                logger.debug(f"Media watcher: new file detected: {file_path.name} ({stat_info.st_size} bytes)")
             return False
 
+        # If using inotify, don't poll for readiness - wait for CLOSE_WRITE event
+        if self._use_inotify:
+            return False
+
+        # Fallback: polling-based stability check (for NFS/remote filesystems)
         pending = self._pending_files[path_str]
+        result = is_file_ready(file_path, pending, self.config.stability_scans)
 
-        if current_size == pending.last_size:
-            # Size unchanged - increment stable count
-            pending.stable_count += 1
-            logger.debug(
-                f"Media watcher: {file_path.name} stable count: {pending.stable_count}/{self.config.stability_scans}"
-            )
-        else:
-            # Size changed - reset counter
-            logger.debug(
-                f"Media watcher: {file_path.name} size changed: {pending.last_size} -> {current_size}"
-            )
-            pending.last_size = current_size
-            pending.stable_count = 0
+        # Cleanup if file disappeared
+        if not file_path.exists():
+            self._pending_files.pop(path_str, None)
 
-        return pending.stable_count >= self.config.stability_scans
+        return result
 
     async def _scan_loop(self):
         """Scan for new media files and check completed jobs."""
@@ -677,20 +716,14 @@ class MediaFileWatcher:
         """
         Submit encoding job for a ready file.
 
+        Watcher only detects and submits - all file operations (temp copy,
+        .processing rename) are handled by JobRunner via WatchfolderContext.
+
         Args:
             file_path: Path to the file to encode
             folder_key: Optional folder key if this file belongs to a dropped folder
-
-        Workflow:
-        1. Copy source to temp folder (unless disable_temp_copy=True)
-        2. Rename source to .processing
-        3. Submit job(s) - encodes from temp, outputs to destination
-        4. (After completion) Rename .processing to .processed/.failed
         """
-        import shutil
         path_str = str(file_path)
-        original_path = file_path
-        processing_path = file_path.with_suffix(file_path.suffix + ".processing")
 
         # Destination is required (validated at startup)
         destination = self.config.destination
@@ -701,57 +734,45 @@ class MediaFileWatcher:
             # file_path is the file inside (e.g., /wf-media/test1/01/video.mkv)
             # We want to preserve: test1/01/ relative to destination
             folder_path = Path(folder_key)
-            folder_name = folder_path.name
             try:
                 # Get path relative to the dropped folder (e.g., 01/video.mkv)
                 relative_from_folder = file_path.relative_to(folder_path)
                 # Get the subdirectory part (e.g., 01)
                 relative_subdir = relative_from_folder.parent
                 # Final destination includes folder name and subdir
-                destination = destination / folder_name / relative_subdir
+                destination = destination / folder_path.name / relative_subdir
             except ValueError:
                 # file_path is not inside folder_key - shouldn't happen, but fallback
                 logger.warning(f"Media watcher: {file_path} not inside folder {folder_path}")
 
-        temp_folder = self._get_temp_folder()
-        temp_source: Optional[Path] = None
-
+        # Compute file fingerprint for tracking
         try:
-            # Step 1: Copy source to temp folder (if enabled)
-            if not self.config.disable_temp_copy:
-                temp_source = temp_folder / file_path.name
-                logger.info(f"Media watcher: copying {file_path.name} to temp folder")
-                shutil.copy2(file_path, temp_source)
-                source_for_encoding = temp_source
-            else:
-                # Encode directly from original (will be renamed to .processing)
-                source_for_encoding = processing_path
-
-            # Step 2: Rename source to .processing
-            logger.info(f"Media watcher: renaming {file_path.name} to {processing_path.name}")
-            file_path.rename(processing_path)
-
+            file_hash = compute_file_fingerprint(file_path)
         except Exception as e:
-            logger.error(f"Media watcher: failed to prepare {file_path.name}: {e}")
+            logger.error(f"Media watcher: failed to compute hash for {file_path.name}: {e}")
             self._pending_files.pop(path_str, None)
             self._failed_files.add(path_str)
-            # Cleanup temp if we created it
-            if temp_source and temp_source.exists():
-                temp_source.unlink()
             return
 
-        # Step 3: Build and submit encoding request
+        # Build request with watchfolder context
+        # JobRunner handles: temp copy (optional), final rename to .processed/.failed or delete
         request = EncodingRequest(
             mode="encode",
             profiles=self.config.profiles,
-            source=str(source_for_encoding),
+            source=str(file_path),
             output_mode="destination",
             destination=str(destination),
             preserve_structure=self.config.preserve_folder_structure,
-            backup=False,  # We handle source file ourselves
+            backup=False,
             hardware_accel=self.config.hardware_accel,
             priority=self.config.priority,
             append_profile_name=self.config.append_profile_name,
+            watchfolder_context=WatchfolderContext(
+                file_hash=file_hash,
+                keep_processed_files=self.config.keep_processed_files,
+                disable_temp_copy=self.config.disable_temp_copy,
+                temp_folder=str(self.config.temp_folder) if self.config.temp_folder else None,
+            ),
         )
 
         # Validate request
@@ -760,46 +781,30 @@ class MediaFileWatcher:
             logger.error(f"Media watcher: invalid request for {file_path.name}: {'; '.join(issues)}")
             self._pending_files.pop(path_str, None)
             self._failed_files.add(path_str)
-            # Rollback: rename .processing back to original
-            try:
-                processing_path.rename(original_path)
-            except Exception:
-                pass
-            # Cleanup temp
-            if temp_source and temp_source.exists():
-                temp_source.unlink()
             return
 
         # Submit job(s)
         job_ids = await self.job_queue.submit(request)
 
         if job_ids:
-            # Track submitted jobs - source file handling happens after job completion
+            # Track submitted file (prevents re-detection until job completes)
+            # File operations are now handled by JobRunner
             self._submitted_jobs[path_str] = SubmittedJob(
-                original_path=original_path,
-                processing_path=processing_path,
-                temp_source=temp_source,
+                original_path=file_path,
+                processing_path=file_path.with_suffix(file_path.suffix + ".processing"),
+                temp_source=None,  # JobRunner handles temp copy now
                 job_ids=job_ids,
                 submitted_at=time.time(),
                 folder_key=folder_key,
             )
             self._pending_files.pop(path_str, None)
             folder_info = f" (folder: {Path(folder_key).name})" if folder_key else ""
-            logger.info(
-                f"Media watcher: submitted {len(job_ids)} job(s) for {file_path.name}{folder_info} "
-                f"(temp_copy={'disabled' if self.config.disable_temp_copy else 'enabled'})"
-            )
+            logger.info(f"Media watcher: submitted {len(job_ids)} job(s) for {file_path.name}{folder_info}")
         else:
-            # Job submission failed - rollback
+            # Job submission failed
             logger.error(f"Media watcher: failed to submit jobs for {file_path.name}")
             self._pending_files.pop(path_str, None)
             self._failed_files.add(path_str)
-            try:
-                processing_path.rename(original_path)
-            except Exception:
-                pass
-            if temp_source and temp_source.exists():
-                temp_source.unlink()
 
     async def _check_completed_jobs(self):
         """Check submitted jobs and handle source files when all jobs complete."""
@@ -845,52 +850,17 @@ class MediaFileWatcher:
 
     def _handle_completed_job(self, submitted: SubmittedJob, failed: bool = False):
         """
-        Handle completed job - rename .processing file and cleanup temp.
+        Handle completed job - just cleanup internal tracking and log.
+
+        File operations (.processing rename, temp cleanup) are handled by JobRunner
+        via WatchfolderContext.
 
         Args:
             submitted: SubmittedJob with file paths
             failed: True if any job failed/cancelled
-
-        Behavior:
-        - If any job failed: .processing -> .failed
-        - If all succeeded and keep_processed_files=True: .processing -> .processed
-        - If all succeeded and keep_processed_files=False: delete .processing file
-        - Always cleanup temp source copy
         """
-        processing_path = submitted.processing_path
         original_name = submitted.original_path.name
-
-        # Handle the .processing file
-        if not processing_path.exists():
-            logger.warning(f"Media watcher: .processing file no longer exists: {processing_path.name}")
+        if failed:
+            logger.warning(f"Media watcher: job(s) failed for {original_name}")
         else:
-            try:
-                if failed:
-                    # Some jobs failed - rename to .failed for easy identification
-                    # .processing -> .failed (remove .processing, add .failed)
-                    failed_path = submitted.original_path.with_suffix(
-                        submitted.original_path.suffix + ".failed"
-                    )
-                    processing_path.rename(failed_path)
-                    logger.warning(f"Media watcher: {original_name} -> {failed_path.name} (encoding failed)")
-                elif self.config.keep_processed_files:
-                    # All succeeded - rename to .processed
-                    processed_path = submitted.original_path.with_suffix(
-                        submitted.original_path.suffix + ".processed"
-                    )
-                    processing_path.rename(processed_path)
-                    logger.info(f"Media watcher: {original_name} -> {processed_path.name}")
-                else:
-                    # All succeeded - delete source file
-                    processing_path.unlink()
-                    logger.info(f"Media watcher: deleted original {original_name}")
-            except Exception as e:
-                logger.warning(f"Media watcher: failed to handle {processing_path.name}: {e}")
-
-        # Cleanup temp source copy
-        if submitted.temp_source and submitted.temp_source.exists():
-            try:
-                submitted.temp_source.unlink()
-                logger.debug(f"Media watcher: cleaned up temp source {submitted.temp_source.name}")
-            except Exception as e:
-                logger.warning(f"Media watcher: failed to cleanup temp source: {e}")
+            logger.info(f"Media watcher: job(s) completed for {original_name}")

@@ -12,6 +12,7 @@ from src.core.replace import SafeReplacer
 from src.core.hardware import HardwareCapabilities
 from src.core.errors import ValidationError, EncodingError, ReplacementError
 from src.profiles.manager import ProfileManager
+from src.api.models import WatchfolderContext
 from .model import Job, JobState, OutputMode
 
 logger = logging.getLogger(__name__)
@@ -25,9 +26,13 @@ class JobRunner:
     Supports multi-profile encoding by using temp copies of the source file.
     """
 
-    # Class-level tracking of temp source copies for multi-profile jobs
+    # Class-level tracking of temp source copies for multi-profile jobs (direct API submissions)
     _temp_source_copies: dict[str, tuple[Path, int]] = {}  # parent_id -> (temp_path, ref_count)
     _temp_source_lock = None  # Initialized lazily
+
+    # Class-level tracking for watchfolder file state
+    _watchfolder_state: dict[str, dict] = {}  # state_key -> { processing_path, temp_source, ref_count }
+    _watchfolder_lock = None  # Initialized lazily
 
     def __init__(
         self,
@@ -62,10 +67,12 @@ class JobRunner:
 
         self.hardware_caps = HardwareCapabilities()
 
-        # Initialize thread lock for temp source tracking
+        # Initialize thread locks for temp source and watchfolder tracking
         import threading
         if JobRunner._temp_source_lock is None:
             JobRunner._temp_source_lock = threading.Lock()
+        if JobRunner._watchfolder_lock is None:
+            JobRunner._watchfolder_lock = threading.Lock()
 
     def execute(
         self,
@@ -74,6 +81,7 @@ class JobRunner:
         profile_index: int = 0,
         total_profiles: int = 1,
         parent_job_id: Optional[str] = None,
+        watchfolder_context: Optional[WatchfolderContext] = None,
     ) -> Job:
         """
         Execute encoding job.
@@ -84,6 +92,8 @@ class JobRunner:
             profile_index: Index of this profile in multi-profile encoding (0-based)
             total_profiles: Total number of profiles for this source
             parent_job_id: Parent job ID for multi-profile grouping
+            watchfolder_context: Context for watchfolder jobs - when present,
+                JobRunner handles all file operations (.processing rename, temp copy)
 
         Returns:
             Updated job object
@@ -94,6 +104,7 @@ class JobRunner:
             ReplacementError: If file replacement fails
         """
         is_multi_profile = total_profiles > 1
+        is_first_profile = profile_index == 0
         temp_source_path: Optional[Path] = None
         logger.info(f"Starting job execution: {job} (profile {profile_index + 1}/{total_profiles})")
 
@@ -104,12 +115,26 @@ class JobRunner:
                 progress_callback(job)
             self._validate_job(job)
 
-            # Setup paths
-            self._setup_paths(job)
+            # Load profile early to get container format
+            profile = self.profile_manager.load_profile(job.profile_name)
 
-            # For multi-profile encoding, get or create temp source copy
+            # Setup paths with profile's container format
+            self._setup_paths(job, container=profile.container)
+
+            # Handle source file setup
             source_for_encoding = job.source_path
-            if is_multi_profile and parent_job_id:
+
+            if watchfolder_context:
+                # Watchfolder job: optionally create temp copy, all profiles use same source
+                source_for_encoding = self._setup_watchfolder_source(
+                    job,
+                    watchfolder_context,
+                    parent_job_id or job.id,
+                    is_first_profile,
+                    total_profiles,
+                )
+            elif is_multi_profile and parent_job_id:
+                # Direct API submission with multi-profile: use existing temp copy mechanism
                 temp_source_path = self._get_or_create_temp_source(
                     parent_job_id,
                     job.source_path,
@@ -122,9 +147,6 @@ class JobRunner:
             if job.hardware_accel is None:
                 job.hardware_accel = self.hardware_caps.get_recommended_accel()
                 logger.info(f"Auto-selected hardware acceleration: {job.hardware_accel or 'none'}")
-
-            # Load profile
-            profile = self.profile_manager.load_profile(job.profile_name)
             expected_duration = None
             if profile.duration:
                 expected_duration = self._parse_duration_to_seconds(profile.duration)
@@ -222,8 +244,16 @@ class JobRunner:
             raise
 
         finally:
-            # Release temp source copy reference (cleanup when last profile finishes)
-            if is_multi_profile and parent_job_id:
+            # Handle cleanup based on job type
+            if watchfolder_context:
+                # Watchfolder job: decrement ref_count and finalize when all profiles complete
+                self._release_watchfolder_ref(
+                    watchfolder_context,
+                    parent_job_id or job.id,
+                    failed=(job.state == JobState.FAILED),
+                )
+            elif is_multi_profile and parent_job_id and not watchfolder_context:
+                # Direct API submission: release temp source copy reference
                 self._release_temp_source(parent_job_id)
 
     def _validate_job(self, job: Job):
@@ -276,28 +306,36 @@ class JobRunner:
 
         logger.debug("Pre-flight validation passed")
 
-    def _setup_paths(self, job: Job):
-        """Setup output and temp paths for job."""
+    def _setup_paths(self, job: Job, container: str = "mkv"):
+        """Setup output and temp paths for job.
+
+        Args:
+            job: Job to setup paths for
+            container: Output container format from profile (mkv, mp4, etc.)
+        """
         # Determine output path (same as source if not specified)
         if job.output_path is None:
             job.output_path = job.source_path
 
-        # Create temp path - handle .processing/.processed/.failed markers
+        # Get source name without processing markers
         source_name = job.source_path.name
         source_suffix = job.source_path.suffix
 
-        # Strip processing markers to get real extension
+        # Strip processing markers to get real name
         processing_markers = [".processing", ".processed", ".failed"]
         if source_suffix in processing_markers:
             # Real extension is in the stem (e.g., "video.mkv.processing" -> stem="video.mkv")
             real_stem = Path(job.source_path.stem)
-            source_suffix = real_stem.suffix or ".mkv"  # Fallback to .mkv
             source_name = real_stem.stem
+        else:
+            source_name = job.source_path.stem
 
-        temp_filename = f"{job.id}_{source_name}_encoded{source_suffix}"
+        # Use profile's container format for output extension
+        output_ext = f".{container}"
+        temp_filename = f"{job.id}_{source_name}_encoded{output_ext}"
         job.temp_path = self.temp_dir / temp_filename
 
-        logger.debug(f"Temp path: {job.temp_path}")
+        logger.debug(f"Temp path: {job.temp_path} (container: {container})")
 
     @staticmethod
     def _parse_duration_to_seconds(duration: str) -> Optional[float]:
@@ -475,3 +513,174 @@ class JobRunner:
             else:
                 JobRunner._temp_source_copies[parent_job_id] = (temp_path, ref_count)
                 logger.debug(f"Released temp source ref: {temp_path} (refs: {ref_count})")
+
+    def _setup_watchfolder_source(
+        self,
+        job: Job,
+        ctx: WatchfolderContext,
+        state_key: str,
+        is_first_profile: bool,
+        total_profiles: int,
+    ) -> Path:
+        """
+        Setup source for watchfolder job.
+
+        All jobs read from the original file (no .processing rename during execution).
+        Temp copy is created once by first profile if disable_temp_copy=False.
+        Final rename (.processed/.failed) or delete happens in _do_watchfolder_cleanup().
+
+        Args:
+            job: Job being executed
+            ctx: Watchfolder context with file handling settings
+            state_key: Key for tracking state (parent_job_id or job.id)
+            is_first_profile: True if this is the first profile
+            total_profiles: Total number of profiles
+
+        Returns:
+            Path to use for encoding (temp copy or original file)
+        """
+        import time
+
+        source_path = job.source_path
+
+        if is_first_profile:
+            with JobRunner._watchfolder_lock:
+                # First profile: optionally create temp copy
+                temp_source = None
+                if not ctx.disable_temp_copy:
+                    temp_folder = Path(ctx.temp_folder) if ctx.temp_folder else self.temp_dir
+                    temp_folder.mkdir(parents=True, exist_ok=True)
+                    temp_source = temp_folder / source_path.name
+                    logger.info(f"Copying {source_path.name} to temp folder")
+                    shutil.copy2(source_path, temp_source)
+                else:
+                    logger.info(f"Encoding directly from source (disable_temp_copy): {source_path}")
+
+                # Store state for subsequent profiles
+                JobRunner._watchfolder_state[state_key] = {
+                    "source_path": source_path,
+                    "temp_source": temp_source,
+                    "ref_count": total_profiles,
+                }
+
+                return temp_source if temp_source else source_path
+
+        else:
+            # Subsequent profile: wait for first profile to set up state
+            # This handles the case where jobs run concurrently
+            max_wait_seconds = 60
+            wait_interval = 0.5
+            elapsed = 0.0
+
+            while elapsed < max_wait_seconds:
+                with JobRunner._watchfolder_lock:
+                    state = JobRunner._watchfolder_state.get(state_key)
+                    if state:
+                        return state["temp_source"] if state["temp_source"] else state["source_path"]
+
+                # State not ready yet, wait and retry
+                logger.debug(f"Waiting for watchfolder state {state_key} (elapsed: {elapsed:.1f}s)")
+                time.sleep(wait_interval)
+                elapsed += wait_interval
+
+            # Timeout - state never became available
+            raise RuntimeError(
+                f"Timeout waiting for watchfolder state {state_key} - "
+                f"first profile may have failed"
+            )
+
+    def _release_watchfolder_ref(
+        self,
+        ctx: WatchfolderContext,
+        state_key: str,
+        failed: bool,
+    ):
+        """
+        Release reference to watchfolder state.
+
+        Decrements ref_count. When it reaches zero, calls _do_watchfolder_cleanup
+        to handle cleanup and final rename.
+
+        Args:
+            ctx: Watchfolder context with file handling settings
+            state_key: Key for tracking state
+            failed: True if this profile's job failed
+        """
+        with JobRunner._watchfolder_lock:
+            state = JobRunner._watchfolder_state.get(state_key)
+            if not state:
+                logger.warning(f"No watchfolder state for {state_key} during release")
+                return
+
+            # Decrement ref count
+            state["ref_count"] -= 1
+
+            # Track if any profile failed
+            if failed:
+                state["any_failed"] = True
+
+            logger.debug(
+                f"Released watchfolder ref: {state_key} "
+                f"(refs: {state['ref_count']}, failed: {state.get('any_failed', False)})"
+            )
+
+            if state["ref_count"] <= 0:
+                # Last profile completed - finalize outside the lock
+                any_failed = state.get("any_failed", False)
+                # Remove state and extract data for cleanup after releasing lock
+                JobRunner._watchfolder_state.pop(state_key, None)
+                source_path = state["source_path"]
+                temp_source = state["temp_source"]
+            else:
+                return  # Not the last profile, nothing more to do
+
+        # Outside the lock - do cleanup for last profile
+        self._do_watchfolder_cleanup(ctx, source_path, temp_source, any_failed)
+
+    def _do_watchfolder_cleanup(
+        self,
+        ctx: WatchfolderContext,
+        source_path: Path,
+        temp_source: Optional[Path],
+        failed: bool,
+    ):
+        """
+        Perform watchfolder cleanup after all profiles complete.
+
+        Args:
+            ctx: Watchfolder context with file handling settings
+            source_path: Original source file path
+            temp_source: Temp copy path (if created)
+            failed: True if any profile failed
+        """
+        # Cleanup temp source
+        if temp_source and temp_source.exists():
+            try:
+                temp_source.unlink()
+                logger.debug(f"Cleaned up temp source: {temp_source}")
+            except Exception as e:
+                logger.warning(f"Failed to cleanup temp source: {e}")
+
+        # Handle source file (final rename or delete)
+        if not source_path.exists():
+            logger.warning(f"Source file no longer exists: {source_path}")
+            return
+
+        try:
+            if failed:
+                # Rename to .failed
+                failed_path = source_path.with_suffix(source_path.suffix + ".failed")
+                source_path.rename(failed_path)
+                logger.info(f"Job failed: {source_path.name} → {failed_path.name}")
+            elif ctx.keep_processed_files:
+                # Rename to .processed
+                processed_path = source_path.with_suffix(source_path.suffix + ".processed")
+                source_path.rename(processed_path)
+                logger.info(f"Job completed: {source_path.name} → {processed_path.name}")
+            else:
+                # Delete source
+                source_path.unlink()
+                logger.info(f"Job completed, source deleted: {source_path.name}")
+        except Exception as e:
+            logger.error(f"Failed to finalize watchfolder source: {e}")
+
