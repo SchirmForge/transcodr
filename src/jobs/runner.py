@@ -70,6 +70,9 @@ class JobRunner:
         # Graceful shutdown flag
         self._shutting_down = False
 
+        # Track cancelled job IDs (set by queue when user cancels a job)
+        self._cancelled_job_ids: set[str] = set()
+
         # Initialize thread locks for temp source and watchfolder tracking
         import threading
         if JobRunner._temp_source_lock is None:
@@ -86,6 +89,23 @@ class JobRunner:
         self._shutting_down = True
         if self.ffmpeg:
             self.ffmpeg.terminate()
+
+    def mark_job_cancelled(self, job_id: str):
+        """
+        Mark a job as cancelled by user (not daemon shutdown).
+
+        This allows the runner to distinguish between user cancellation
+        and daemon shutdown when handling cleanup.
+        """
+        self._cancelled_job_ids.add(job_id)
+
+    def is_job_cancelled(self, job_id: str) -> bool:
+        """Check if a job was cancelled by user."""
+        return job_id in self._cancelled_job_ids
+
+    def clear_cancelled_job(self, job_id: str):
+        """Remove job from cancelled tracking after cleanup."""
+        self._cancelled_job_ids.discard(job_id)
 
     def execute(
         self,
@@ -241,9 +261,23 @@ class JobRunner:
             return job
 
         except Exception as e:
-            # Check if this was due to graceful shutdown
-            is_interrupted = self._shutting_down
-            if is_interrupted:
+            # Check if this was due to:
+            # 1. User cancellation (via cancel_job API)
+            # 2. Daemon shutdown (SIGINT/SIGTERM)
+            # 3. FFmpeg receiving SIGINT from process group (exit code 255)
+            is_sigint = (
+                isinstance(e, EncodingError) and
+                getattr(e, 'exit_code', None) == 255
+            )
+            is_cancelled = self.is_job_cancelled(job.id)
+            is_interrupted = self._shutting_down or is_sigint
+
+            if is_cancelled:
+                # User cancelled this job - mark as cancelled, leave source unchanged
+                logger.info(f"Job cancelled by user: {job.id}")
+                job.state = JobState.CANCELLED
+                job.error_message = "Cancelled by user"
+            elif is_interrupted:
                 logger.info(f"Job interrupted by shutdown: {job.id}")
                 job.state = JobState.INTERRUPTED
                 job.error_message = "Interrupted by daemon shutdown"
@@ -267,14 +301,20 @@ class JobRunner:
         finally:
             # Handle cleanup based on job type
             is_failed = job.state == JobState.FAILED
+            is_cancelled = job.state == JobState.CANCELLED
             is_interrupted = job.state == JobState.INTERRUPTED
+
+            # Clear cancelled tracking after handling
+            self.clear_cancelled_job(job.id)
+
             if watchfolder_context:
                 # Watchfolder job: decrement ref_count and finalize when all profiles complete
+                # Cancelled jobs are treated like interrupted (leave source unchanged)
                 self._release_watchfolder_ref(
                     watchfolder_context,
                     parent_job_id or job.id,
                     failed=is_failed,
-                    interrupted=is_interrupted,
+                    interrupted=is_interrupted or is_cancelled,
                 )
             elif is_multi_profile and parent_job_id and not watchfolder_context:
                 # Direct API submission: release temp source copy reference
@@ -630,7 +670,7 @@ class JobRunner:
             ctx: Watchfolder context with file handling settings
             state_key: Key for tracking state
             failed: True if this profile's job failed
-            interrupted: True if this profile's job was interrupted by shutdown
+            interrupted: True if this profile's job was interrupted/cancelled
         """
         with JobRunner._watchfolder_lock:
             state = JobRunner._watchfolder_state.get(state_key)
@@ -641,7 +681,8 @@ class JobRunner:
             # Decrement ref count
             state["ref_count"] -= 1
 
-            # Track if any profile failed or was interrupted
+            # Track if any profile failed or was interrupted/cancelled
+            # Note: cancelled jobs pass interrupted=True to leave source unchanged
             if failed:
                 state["any_failed"] = True
             if interrupted:
@@ -700,8 +741,8 @@ class JobRunner:
 
         try:
             if interrupted:
-                # Job was interrupted by graceful shutdown - leave file unchanged for retry
-                logger.info(f"Job interrupted, source unchanged: {source_path.name}")
+                # Job was interrupted (shutdown) or cancelled - leave file unchanged for retry
+                logger.info(f"Job interrupted/cancelled, source unchanged: {source_path.name}")
             elif failed:
                 # Rename to .failed
                 failed_path = source_path.with_suffix(source_path.suffix + ".failed")

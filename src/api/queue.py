@@ -86,6 +86,9 @@ class JobQueue:
         self._source_running_counts: dict[str, int] = {}  # source_id -> running count
         self._source_limits: dict[str, int] = {}  # source_id -> max_concurrent
 
+        # Track cancelled jobs so runner can detect cancellation vs failure
+        self._cancelled_job_ids: set[str] = set()
+
     async def start(self):
         """Start the job queue."""
         self._running = True
@@ -648,6 +651,24 @@ class JobQueue:
             # Update job with results
             await self._update_job_completed(job_id, completed_job)
 
+        except asyncio.CancelledError:
+            # Job was cancelled - check if it was already marked as cancelled
+            # (by cancel_job()) or if this is a daemon shutdown
+            async with self._lock:
+                cursor = self._conn.execute(
+                    "SELECT status FROM jobs WHERE id = ?", (job_id,)
+                )
+                row = cursor.fetchone()
+                current_status = row["status"] if row else None
+
+            if current_status == JobStatus.CANCELLED.value:
+                logger.info(f"Job {job_id} was cancelled by user")
+            else:
+                # Daemon shutdown - mark as interrupted for auto-retry
+                logger.info(f"Job {job_id} interrupted by shutdown")
+                await self._update_job_status(job_id, JobStatus.INTERRUPTED)
+            raise  # Re-raise to propagate cancellation
+
         except Exception as e:
             logger.error(f"Job {job_id} failed: {e}", exc_info=True)
             await self._update_job_failed(job_id, str(e))
@@ -656,6 +677,9 @@ class JobQueue:
             # Remove from active jobs
             if job_id in self._active_jobs:
                 del self._active_jobs[job_id]
+
+            # Clean up cancelled job tracking
+            self._cancelled_job_ids.discard(job_id)
 
             # Decrement per-source running count
             if source_id and source_id in self._source_running_counts:
@@ -674,13 +698,15 @@ class JobQueue:
                         progress = ?,
                         fps = ?,
                         frames_processed = ?,
-                        frames_total = ?
+                        frames_total = ?,
+                        hardware_accel = ?
                     WHERE id = ?
                 """, (
                     job.progress_percent,
                     job.current_fps,
                     job.frames_processed,
                     job.frames_total,
+                    job.hardware_accel,
                     job_id,
                 ))
         except Exception as e:
@@ -708,13 +734,15 @@ class JobQueue:
                     completed_at = ?,
                     progress = 100.0,
                     output_size_bytes = ?,
-                    output_path = ?
+                    output_path = ?,
+                    hardware_accel = ?
                 WHERE id = ?
             """, (
                 JobStatus.COMPLETED.value,
                 datetime.now().isoformat(),
                 job.output_size_bytes,
                 str(job.output_path) if job.output_path else None,
+                job.hardware_accel,
                 job_id,
             ))
             logger.info(f"Job completed: {job_id}")
@@ -804,11 +832,26 @@ class JobQueue:
         if job.status not in (JobStatus.PENDING, JobStatus.RUNNING):
             return False
 
-        # Cancel running task if exists
-        if job_id in self._active_jobs:
-            self._active_jobs[job_id].cancel()
+        # Track that this job was explicitly cancelled (not daemon shutdown)
+        self._cancelled_job_ids.add(job_id)
 
-        await self._update_job_status(job_id, JobStatus.CANCELLED)
+        # Tell the job runner this job was cancelled (for proper cleanup handling)
+        self._job_runner.mark_job_cancelled(job_id)
+
+        # For running jobs, we need to terminate FFmpeg and signal cancellation
+        if job.status == JobStatus.RUNNING and job_id in self._active_jobs:
+            # Mark as cancelled in DB first (before terminating FFmpeg)
+            await self._update_job_status(job_id, JobStatus.CANCELLED)
+
+            # Terminate FFmpeg process gracefully
+            self._job_runner.ffmpeg.terminate()
+
+            # Cancel the asyncio task
+            self._active_jobs[job_id].cancel()
+        else:
+            # Pending job - just update status
+            await self._update_job_status(job_id, JobStatus.CANCELLED)
+
         return True
 
     async def retry_job(self, job_id: str) -> Optional[JobInfo]:
