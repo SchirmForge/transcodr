@@ -160,26 +160,28 @@
 - [ ] Lossless audio formats: FLAC, WAV, ALAC, APE, WavPack, DSD
 - [ ] Audio-specific encoding profiles
 
-### Version 0.2.7: Web UI
+### Version 0.3: Web UI
 - [ ] Left-nav layout with Jobs/Watch Folders/Profiles/Settings/System
 - [ ] Jobs activity + history views with filters and ordering
 - [ ] Job detail accordion with resubmit support
 - [ ] Watch folder status list
+- [ ] React + Vite + TypeScript stack
+- [ ] Daemon API integration with polling
 
-### Version 0.3.1: Video Analysis Profiles
+### Version 0.4.1: Video Analysis Profiles
 - [ ] New `analysis` profile type with deterministic + perceptual phases
 - [ ] Technical heuristics (bpp, bitrate/resolution mismatch, re-encode signals)
 - [ ] Perceptual artifact scoring (blocking, banding, blur, ringing, temporal)
 - [ ] Profile auto-selection: AV1 vs x265 vs keep-as-is
 
-### Version 0.3.2: Distributed Encoding
+### Version 0.4.2: Distributed Encoding
 - [ ] Controller/worker architecture (local, LAN, remote)
 - [ ] Job distribution strategies (round-robin, capability, load, priority)
 - [ ] Worker registration + heartbeat monitoring
 - [ ] Remote transfer workflow (rsync/sftp/scp)
 - [ ] Phased rollout: local -> LAN -> remote -> auto-discovery
 
-### Version 0.3.3: Video Filters
+### Version 0.4.3: Video Filters
 - [ ] Profile schema for filter configuration (scale, crop, deinterlace, etc.)
 - [ ] Filter-chain generation with ordering rules
 - [ ] Preset filter profiles (1080p/720p, deinterlace-only, clean-archive)
@@ -210,10 +212,13 @@
 
 ## Version History
 
+### v0.4 (Planned)
+- Video analysis profiles (0.4.1)
+- Distributed encoding (0.4.2)
+- Video filters (0.4.3)
+
 ### v0.3 (Planned)
-- Video analysis profiles (0.3.1)
-- Distributed encoding (0.3.2)
-- Video filters (0.3.3)
+- Web UI with React + Vite + TypeScript
 
 ### v0.2 (Current - v0.2.3 Released)
 - ✅ Watch folder improvements (0.2.1) - **DONE**
@@ -222,7 +227,6 @@
 - Subtitles management (0.2.4)
 - Notifications (0.2.5)
 - Audio file encoding (0.2.6)
-- Web UI (0.2.7)
 
 ### v0.2.3 (Current)
 - Profile-level `destination:` with path placeholder support
