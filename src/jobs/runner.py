@@ -67,12 +67,25 @@ class JobRunner:
 
         self.hardware_caps = HardwareCapabilities()
 
+        # Graceful shutdown flag
+        self._shutting_down = False
+
         # Initialize thread locks for temp source and watchfolder tracking
         import threading
         if JobRunner._temp_source_lock is None:
             JobRunner._temp_source_lock = threading.Lock()
         if JobRunner._watchfolder_lock is None:
             JobRunner._watchfolder_lock = threading.Lock()
+
+    def request_shutdown(self):
+        """
+        Signal that daemon is shutting down.
+
+        Gracefully terminates any running FFmpeg process.
+        """
+        self._shutting_down = True
+        if self.ffmpeg:
+            self.ffmpeg.terminate()
 
     def execute(
         self,
@@ -228,8 +241,16 @@ class JobRunner:
             return job
 
         except Exception as e:
-            logger.error(f"Job failed: {e}", exc_info=True)
-            job.mark_failed(str(e))
+            # Check if this was due to graceful shutdown
+            is_interrupted = self._shutting_down
+            if is_interrupted:
+                logger.info(f"Job interrupted by shutdown: {job.id}")
+                job.state = JobState.INTERRUPTED
+                job.error_message = "Interrupted by daemon shutdown"
+            else:
+                logger.error(f"Job failed: {e}", exc_info=True)
+                job.mark_failed(str(e))
+
             if progress_callback:
                 progress_callback(job)
 
@@ -245,12 +266,15 @@ class JobRunner:
 
         finally:
             # Handle cleanup based on job type
+            is_failed = job.state == JobState.FAILED
+            is_interrupted = job.state == JobState.INTERRUPTED
             if watchfolder_context:
                 # Watchfolder job: decrement ref_count and finalize when all profiles complete
                 self._release_watchfolder_ref(
                     watchfolder_context,
                     parent_job_id or job.id,
-                    failed=(job.state == JobState.FAILED),
+                    failed=is_failed,
+                    interrupted=is_interrupted,
                 )
             elif is_multi_profile and parent_job_id and not watchfolder_context:
                 # Direct API submission: release temp source copy reference
@@ -594,6 +618,7 @@ class JobRunner:
         ctx: WatchfolderContext,
         state_key: str,
         failed: bool,
+        interrupted: bool = False,
     ):
         """
         Release reference to watchfolder state.
@@ -605,6 +630,7 @@ class JobRunner:
             ctx: Watchfolder context with file handling settings
             state_key: Key for tracking state
             failed: True if this profile's job failed
+            interrupted: True if this profile's job was interrupted by shutdown
         """
         with JobRunner._watchfolder_lock:
             state = JobRunner._watchfolder_state.get(state_key)
@@ -615,18 +641,22 @@ class JobRunner:
             # Decrement ref count
             state["ref_count"] -= 1
 
-            # Track if any profile failed
+            # Track if any profile failed or was interrupted
             if failed:
                 state["any_failed"] = True
+            if interrupted:
+                state["any_interrupted"] = True
 
             logger.debug(
                 f"Released watchfolder ref: {state_key} "
-                f"(refs: {state['ref_count']}, failed: {state.get('any_failed', False)})"
+                f"(refs: {state['ref_count']}, failed: {state.get('any_failed', False)}, "
+                f"interrupted: {state.get('any_interrupted', False)})"
             )
 
             if state["ref_count"] <= 0:
                 # Last profile completed - finalize outside the lock
                 any_failed = state.get("any_failed", False)
+                any_interrupted = state.get("any_interrupted", False)
                 # Remove state and extract data for cleanup after releasing lock
                 JobRunner._watchfolder_state.pop(state_key, None)
                 source_path = state["source_path"]
@@ -635,7 +665,7 @@ class JobRunner:
                 return  # Not the last profile, nothing more to do
 
         # Outside the lock - do cleanup for last profile
-        self._do_watchfolder_cleanup(ctx, source_path, temp_source, any_failed)
+        self._do_watchfolder_cleanup(ctx, source_path, temp_source, any_failed, any_interrupted)
 
     def _do_watchfolder_cleanup(
         self,
@@ -643,6 +673,7 @@ class JobRunner:
         source_path: Path,
         temp_source: Optional[Path],
         failed: bool,
+        interrupted: bool = False,
     ):
         """
         Perform watchfolder cleanup after all profiles complete.
@@ -652,6 +683,7 @@ class JobRunner:
             source_path: Original source file path
             temp_source: Temp copy path (if created)
             failed: True if any profile failed
+            interrupted: True if any profile was interrupted by shutdown
         """
         # Cleanup temp source
         if temp_source and temp_source.exists():
@@ -667,7 +699,10 @@ class JobRunner:
             return
 
         try:
-            if failed:
+            if interrupted:
+                # Job was interrupted by graceful shutdown - leave file unchanged for retry
+                logger.info(f"Job interrupted, source unchanged: {source_path.name}")
+            elif failed:
                 # Rename to .failed
                 failed_path = source_path.with_suffix(source_path.suffix + ".failed")
                 source_path.rename(failed_path)

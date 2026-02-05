@@ -19,6 +19,7 @@ class JobState(str, Enum):
     COMPLETED = "completed"
     FAILED = "failed"
     CANCELLED = "cancelled"
+    INTERRUPTED = "interrupted"  # Graceful shutdown while running
 
 
 class OutputMode(str, Enum):

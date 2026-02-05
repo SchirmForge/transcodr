@@ -16,6 +16,7 @@ class JobStatus(str, Enum):
     COMPLETED = "completed"
     FAILED = "failed"
     CANCELLED = "cancelled"
+    INTERRUPTED = "interrupted"  # Graceful shutdown while running
 
 
 class OutputMode(str, Enum):
@@ -283,8 +284,8 @@ class EncodingRequest(BaseModel):
         if not source_path.exists():
             issues.append(f"Source path does not exist: {self.source}")
 
-        # Check destination is provided when needed
-        if self.output_mode == OutputMode.DESTINATION and not self.destination:
+        # Check destination is provided when needed (unless using profile destinations)
+        if self.output_mode == OutputMode.DESTINATION and not self.destination and not self.use_profile_destination:
             issues.append("Destination is required when output_mode is 'destination'")
 
         # Check destination is writable
@@ -465,6 +466,14 @@ class JobInfo(BaseModel):
 
     # Error info
     error_message: Optional[str] = Field(default=None, description="Error message if failed")
+
+    # Encoding settings (populated from profile when returning job info)
+    hardware_accel: Optional[str] = Field(default=None, description="Hardware acceleration used")
+    video_codec: Optional[str] = Field(default=None, description="Video codec")
+    audio_codec: Optional[str] = Field(default=None, description="Audio codec or 'copy'")
+    subtitle_mode: Optional[str] = Field(default=None, description="Subtitle handling")
+    container: Optional[str] = Field(default=None, description="Output container format")
+    use_temp_folder: bool = Field(default=True, description="Using temp folder for encoding")
 
     @property
     def compression_ratio(self) -> float:

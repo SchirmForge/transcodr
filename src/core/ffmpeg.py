@@ -1,6 +1,7 @@
 """FFmpeg wrapper for video transcoding operations."""
 
 import re
+import signal
 import subprocess
 import logging
 from pathlib import Path
@@ -54,6 +55,7 @@ class FFmpegWrapper:
             binary_path: Path to FFmpeg binary (default: "ffmpeg" from PATH)
         """
         self.binary_path = binary_path
+        self._current_process: Optional[subprocess.Popen] = None
         self.version = self._detect_version()
         logger.info(f"FFmpeg initialized: {self.version}")
 
@@ -203,27 +205,35 @@ class FFmpegWrapper:
             text=True,
         )
 
+        # Store process reference for graceful termination
+        self._current_process = process
+
         stderr_lines = []
 
-        # Stream stderr for progress and error capture
-        for line in process.stderr:
-            stderr_lines.append(line)
+        try:
+            # Stream stderr for progress and error capture
+            for line in process.stderr:
+                stderr_lines.append(line)
 
-            # Log stderr (but filter out progress lines to avoid spam)
-            if "frame=" not in line:
-                logger.debug(f"FFmpeg: {line.rstrip()}")
+                # Log stderr (but filter out progress lines to avoid spam)
+                if "frame=" not in line:
+                    logger.debug(f"FFmpeg: {line.rstrip()}")
 
-            # Parse and report progress
-            if progress_callback:
-                progress = self._parse_progress(line)
-                if progress:
-                    try:
-                        progress_callback(progress)
-                    except Exception as e:
-                        logger.warning(f"Progress callback error: {e}")
+                # Parse and report progress
+                if progress_callback:
+                    progress = self._parse_progress(line)
+                    if progress:
+                        try:
+                            progress_callback(progress)
+                        except Exception as e:
+                            logger.warning(f"Progress callback error: {e}")
 
-        # Wait for process to complete
-        process.wait()
+            # Wait for process to complete
+            process.wait()
+        finally:
+            # Clear process reference
+            self._current_process = None
+
         stderr_text = "".join(stderr_lines)
 
         if process.returncode != 0:
@@ -231,7 +241,8 @@ class FFmpegWrapper:
             logger.error(f"FFmpeg stderr:\n{stderr_text}")
             raise EncodingError(
                 f"FFmpeg exited with code {process.returncode}. "
-                f"Check logs for details."
+                f"Check logs for details.",
+                exit_code=process.returncode,
             )
 
         logger.info("FFmpeg completed successfully")
@@ -242,6 +253,45 @@ class FFmpegWrapper:
             stdout="",
             stderr=stderr_text,
         )
+
+    def terminate(self, timeout: float = 10.0) -> bool:
+        """
+        Gracefully terminate running FFmpeg process.
+
+        Sends SIGINT first (allows FFmpeg to finish writing), then SIGTERM/SIGKILL
+        if it doesn't exit within the timeout.
+
+        Args:
+            timeout: Seconds to wait for graceful exit before force killing
+
+        Returns:
+            True if process terminated gracefully, False if force killed
+        """
+        process = self._current_process
+        if not process or process.poll() is not None:
+            # No process running or already terminated
+            return True
+
+        logger.info("Gracefully terminating FFmpeg process...")
+
+        # Send SIGINT for graceful exit (FFmpeg finishes writing current frame)
+        try:
+            process.send_signal(signal.SIGINT)
+        except OSError:
+            # Process may have already terminated
+            return True
+
+        try:
+            process.wait(timeout=timeout)
+            logger.info("FFmpeg terminated gracefully")
+            return True
+        except subprocess.TimeoutExpired:
+            # Force kill if graceful shutdown fails
+            logger.warning(f"FFmpeg did not exit within {timeout}s, force killing...")
+            process.kill()
+            process.wait()
+            logger.info("FFmpeg force killed")
+            return False
 
     def get_encoders(self) -> list[str]:
         """

@@ -1,6 +1,7 @@
 """Job queue with SQLite persistence and concurrent execution."""
 
 import asyncio
+import json
 import logging
 import sqlite3
 import threading
@@ -89,6 +90,16 @@ class JobQueue:
         """Start the job queue."""
         self._running = True
         self._init_db()
+
+        # Reset interrupted jobs from previous shutdown to pending for auto-retry
+        cursor = self._conn.execute("""
+            UPDATE jobs SET status = ?, started_at = NULL, progress = 0
+            WHERE status = ?
+        """, (JobStatus.PENDING.value, JobStatus.INTERRUPTED.value))
+        if cursor.rowcount > 0:
+            logger.info(f"Reset {cursor.rowcount} interrupted jobs to pending for retry")
+        self._conn.commit()
+
         logger.info(f"Job queue started (max concurrent: {self.max_concurrent})")
 
         # Start the job processor
@@ -98,14 +109,28 @@ class JobQueue:
         """Stop the job queue gracefully."""
         self._running = False
 
-        # Cancel active jobs
+        # Signal job runner to shut down gracefully (terminates FFmpeg)
+        self._job_runner.request_shutdown()
+
+        # Cancel active asyncio tasks
         for job_id, task in self._active_jobs.items():
             task.cancel()
-            logger.info(f"Cancelled active job: {job_id}")
+            logger.info(f"Interrupted active job: {job_id}")
 
         # Wait for tasks to complete
         if self._active_jobs:
             await asyncio.gather(*self._active_jobs.values(), return_exceptions=True)
+
+        # Mark any jobs still in RUNNING state as INTERRUPTED
+        # (they may not have been updated by the job runner if it was mid-execution)
+        async with self._lock:
+            cursor = self._conn.execute("""
+                UPDATE jobs SET status = ?
+                WHERE status = ?
+            """, (JobStatus.INTERRUPTED.value, JobStatus.RUNNING.value))
+            if cursor.rowcount > 0:
+                logger.info(f"Marked {cursor.rowcount} running jobs as interrupted")
+            self._conn.commit()
 
         self._executor.shutdown(wait=True)
 
@@ -349,8 +374,6 @@ class JobQueue:
         Returns:
             List of created job IDs
         """
-        import json
-
         job_ids = []
 
         # Generate source_id for per-source concurrency tracking
@@ -593,7 +616,6 @@ class JobQueue:
             # Deserialize watchfolder_context if present
             watchfolder_context = None
             if row["watchfolder_context"]:
-                import json
                 ctx_data = json.loads(row["watchfolder_context"])
                 watchfolder_context = WatchfolderContext(**ctx_data)
 
@@ -893,6 +915,39 @@ class JobQueue:
 
     def _row_to_job_info(self, row: sqlite3.Row) -> JobInfo:
         """Convert database row to JobInfo."""
+        # Get encoding settings from profile
+        profile_name = row["profile"]
+        video_codec = None
+        audio_codec = None
+        subtitle_mode = None
+        container = None
+
+        try:
+            profile = self._profile_manager.load_profile(profile_name)
+            if profile:
+                container = profile.container
+                if profile.video:
+                    video_codec = profile.video.codec
+                if profile.audio:
+                    audio_codec = profile.audio.codec if profile.audio.codec else "copy"
+                else:
+                    audio_codec = "copy"
+                if profile.subtitles:
+                    subtitle_mode = "include_all" if profile.subtitles.include_all else "none"
+                else:
+                    subtitle_mode = "include_all"  # default
+        except Exception:
+            pass  # Profile lookup failed, leave fields as None
+
+        # Check if temp folder is disabled (from watchfolder_context)
+        use_temp_folder = True
+        if row["watchfolder_context"]:
+            try:
+                ctx_data = json.loads(row["watchfolder_context"])
+                use_temp_folder = not ctx_data.get("disable_temp_copy", False)
+            except Exception:
+                pass
+
         return JobInfo(
             id=row["id"],
             status=JobStatus(row["status"]),
@@ -912,4 +967,11 @@ class JobQueue:
             source_size_bytes=row["source_size_bytes"] or 0,
             output_size_bytes=row["output_size_bytes"] or 0,
             error_message=row["error_message"],
+            # Encoding settings
+            hardware_accel=row["hardware_accel"],
+            video_codec=video_codec,
+            audio_codec=audio_codec,
+            subtitle_mode=subtitle_mode,
+            container=container,
+            use_temp_folder=use_temp_folder,
         )
