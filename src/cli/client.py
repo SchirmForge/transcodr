@@ -281,7 +281,7 @@ def cmd_watch(args):
     if not watchfolders:
         print("No watchfolders running")
         print()
-        print("Create a watchfolder config in ~/.config/videotranscode/watchfolders/")
+        print("Create a watchfolder config in ~/.config/transcodr/watchfolders/")
         print("and restart the daemon.")
         return
 

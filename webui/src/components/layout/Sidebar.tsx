@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { NavLink, useLocation } from 'react-router-dom'
+import logoImg from '../../assets/videoforge-final-alpha.png'
 
 interface NavItem {
   label: string
@@ -84,10 +85,10 @@ export function Sidebar() {
   }
 
   return (
-    <aside className="w-56 bg-gray-900 text-gray-100 flex flex-col min-h-screen">
+    <aside className="w-56 bg-sky-100 dark:bg-sky-900 text-gray-100 flex flex-col min-h-screen">
       <div className="p-4 border-b border-gray-700">
-        <h1 className="text-lg font-semibold">VideoTranscode</h1>
-        <span className="text-xs text-gray-400">v0.3</span>
+        <img src={logoImg} alt="Video Forge" className="w-full" />
+        <span className="text-xs text-gray-400 block text-center mt-1">v0.3</span>
       </div>
       <nav className="flex-1 p-2 overflow-y-auto">
         {navigation.map((section) => {

@@ -17,7 +17,7 @@ Video Transcode supports two types of watch folders:
 
 Watch folder configs are stored in:
 ```
-~/.config/videotranscode/watchfolders/
+~/.config/transcodr/watchfolders/
 ```
 
 Each `.yaml` file defines one watch folder.
@@ -31,7 +31,7 @@ Command watch folders monitor a directory for YAML encoding request files.
 ### Configuration
 
 ```yaml
-# ~/.config/videotranscode/watchfolders/commands.yaml
+# ~/.config/transcodr/watchfolders/commands.yaml
 watchfolder_location: /tmp/encode-commands
 watchfolder_type: command
 scan_interval: 5
@@ -105,7 +105,7 @@ Media watch folders monitor a directory for video files directly.
 ### Configuration
 
 ```yaml
-# ~/.config/videotranscode/watchfolders/downloads.yaml
+# ~/.config/transcodr/watchfolders/downloads.yaml
 watchfolder_location: /home/user/downloads
 watchfolder_type: media
 
@@ -313,7 +313,7 @@ Specifies where to copy source files during encoding:
 temp_folder: /fast-ssd/encode-temp
 ```
 
-- Default: System temp directory (`/tmp/videotranscode`)
+- Default: System temp directory (`/tmp/transcodr`)
 - Should be on fast storage (SSD preferred)
 - Requires enough space for the largest source file
 
@@ -378,7 +378,7 @@ This reloads watchfolder configurations and clears the profile cache, ensuring a
 Encode all videos from downloads to an encoded folder:
 
 ```yaml
-# ~/.config/videotranscode/watchfolders/downloads.yaml
+# ~/.config/transcodr/watchfolders/downloads.yaml
 watchfolder_location: /home/user/Downloads
 watchfolder_type: media
 scan_interval: 30
@@ -393,7 +393,7 @@ destination: /media/videos/
 Encode TV recordings from a PVR:
 
 ```yaml
-# ~/.config/videotranscode/watchfolders/recordings.yaml
+# ~/.config/transcodr/watchfolders/recordings.yaml
 watchfolder_location: /media/recordings
 watchfolder_type: media
 scan_interval: 60
@@ -413,7 +413,7 @@ priority: 3
 Create multiple versions for different devices:
 
 ```yaml
-# ~/.config/videotranscode/watchfolders/ripping.yaml
+# ~/.config/transcodr/watchfolders/ripping.yaml
 watchfolder_location: /media/rips
 watchfolder_type: media
 scan_interval: 30
@@ -441,8 +441,8 @@ Output structure:
 For integration with other tools:
 
 ```yaml
-# ~/.config/videotranscode/watchfolders/commands.yaml
-watchfolder_location: /var/spool/videotranscode
+# ~/.config/transcodr/watchfolders/commands.yaml
+watchfolder_location: /var/spool/transcodr
 watchfolder_type: command
 scan_interval: 5
 ```
@@ -452,7 +452,7 @@ scan_interval: 5
 For fully automated pipelines where source cleanup is desired:
 
 ```yaml
-# ~/.config/videotranscode/watchfolders/auto-cleanup.yaml
+# ~/.config/transcodr/watchfolders/auto-cleanup.yaml
 watchfolder_location: /media/incoming
 watchfolder_type: media
 scan_interval: 30
@@ -479,7 +479,7 @@ temp_folder: /fast-ssd/temp
 Process entire folders as units (e.g., movie folders with video + extras):
 
 ```yaml
-# ~/.config/videotranscode/watchfolders/movies.yaml
+# ~/.config/transcodr/watchfolders/movies.yaml
 watchfolder_location: /media/rips
 watchfolder_type: media
 scan_interval: 30
@@ -516,7 +516,7 @@ Output:
 Limit concurrent jobs to avoid overwhelming slow storage:
 
 ```yaml
-# ~/.config/videotranscode/watchfolders/nas-queue.yaml
+# ~/.config/transcodr/watchfolders/nas-queue.yaml
 watchfolder_location: /mnt/nas/encode-queue
 watchfolder_type: media
 scan_interval: 60
@@ -536,7 +536,7 @@ This prevents multiple concurrent encodes from saturating network bandwidth when
 Multiple users drop files in their own subdirectories:
 
 ```yaml
-# ~/.config/videotranscode/watchfolders/shared.yaml
+# ~/.config/transcodr/watchfolders/shared.yaml
 watchfolder_location: /shared/encode-queue
 watchfolder_type: media
 scan_interval: 60

@@ -3,7 +3,7 @@
 Manual test script for FFmpeg wrapper.
 
 Run this script from the conda environment to verify FFmpeg integration:
-    conda activate videotranscode
+    conda activate transcodr
     python tests/manual_test_ffmpeg.py
 """
 

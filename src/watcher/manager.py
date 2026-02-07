@@ -16,13 +16,13 @@ class WatchfolderConfigManager:
     Manages watchfolder configuration files.
 
     Loads watchfolder configurations from YAML files in
-    ~/.config/videotranscode/watchfolders/
+    ~/.config/transcodr/watchfolders/
     """
 
     @staticmethod
     def get_config_dir() -> Path:
         """Get watchfolders configuration directory path."""
-        return Path.home() / ".config" / "videotranscode" / "watchfolders"
+        return Path.home() / ".config" / "transcodr" / "watchfolders"
 
     @staticmethod
     def ensure_config_dir() -> None:

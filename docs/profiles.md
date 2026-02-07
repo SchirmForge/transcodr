@@ -15,7 +15,7 @@ Video Transcode includes these built-in profiles:
 
 Profiles are loaded from these locations (in order of priority):
 
-1. **User profiles**: `~/.config/videotranscode/profiles/`
+1. **User profiles**: `~/.config/transcodr/profiles/`
 2. **Built-in profiles**: `src/profiles/builtin/` (in source repo)
 
 User profiles override built-in profiles with the same name.
@@ -27,7 +27,7 @@ User profiles override built-in profiles with the same name.
 Copy a built-in profile and customize it:
 
 ```bash
-cd ~/.config/videotranscode/profiles/
+cd ~/.config/transcodr/profiles/
 cp x265-balanced.yaml my-custom-profile.yaml
 nano my-custom-profile.yaml
 ```

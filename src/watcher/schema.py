@@ -17,7 +17,7 @@ class WatchfolderConfig(BaseModel):
     Watchfolder configuration.
 
     Defines a watchfolder that monitors a location for command files or media files.
-    Configuration files are stored in ~/.config/videotranscode/watchfolders/
+    Configuration files are stored in ~/.config/transcodr/watchfolders/
 
     For type 'command': watches for YAML command files that specify encoding settings.
     For type 'media': watches for video/audio files and uses embedded encoding settings.

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Initialize videotranscode configuration."""
+"""Initialize transcodr configuration."""
 
 import sys
 import logging

@@ -116,7 +116,7 @@ No benefit or worse performance. Indicates:
 
 ### Global Concurrency (Default)
 
-Edit `~/.config/videotranscode/config.yaml`:
+Edit `~/.config/transcodr/config.yaml`:
 
 ```yaml
 daemon:
@@ -137,7 +137,7 @@ python tests/benchmark_concurrency.py x265-balanced 8 10
 python tests/save_benchmark_to_profile.py x265-balanced 4
 ```
 
-This creates a user profile at `~/.config/videotranscode/profiles/x265-balanced.yaml`:
+This creates a user profile at `~/.config/transcodr/profiles/x265-balanced.yaml`:
 
 ```yaml
 name: x265-balanced

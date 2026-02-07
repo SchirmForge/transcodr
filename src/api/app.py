@@ -43,7 +43,7 @@ async def lifespan(app: FastAPI):
     """Application lifespan - startup and shutdown."""
     global _start_time, _job_queue, _watchfolder_service, _config
 
-    logger.info("Starting videotranscode daemon...")
+    logger.info("Starting transcodr daemon...")
     _start_time = datetime.now()
 
     # Ensure config directory structure exists
@@ -82,7 +82,7 @@ async def lifespan(app: FastAPI):
     yield
 
     # Shutdown
-    logger.info("Shutting down videotranscode daemon...")
+    logger.info("Shutting down transcodr daemon...")
     if _watchfolder_service:
         await _watchfolder_service.stop()
     if _job_queue:
@@ -268,7 +268,7 @@ async def list_watchfolders():
     """
     List all config-based watchfolders.
 
-    Watchfolders are defined in ~/.config/videotranscode/watchfolders/*.yaml
+    Watchfolders are defined in ~/.config/transcodr/watchfolders/*.yaml
     """
     global _watchfolder_service
 

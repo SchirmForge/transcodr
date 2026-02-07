@@ -13,6 +13,7 @@ from src.core.hardware import HardwareCapabilities
 from src.core.errors import ValidationError, EncodingError, ReplacementError
 from src.profiles.manager import ProfileManager
 from src.api.models import WatchfolderContext
+from src.watcher.inotify_watcher import wait_for_file_ready
 from .model import Job, JobState, OutputMode
 
 logger = logging.getLogger(__name__)
@@ -40,7 +41,7 @@ class JobRunner:
         profile_manager: Optional[ProfileManager] = None,
         temp_dir: Optional[Path] = None,
         backup_originals: bool = True,
-        duration_tolerance_seconds: float = 5.0,
+        duration_tolerance_seconds: float = 10.0,
     ):
         """
         Initialize job runner.
@@ -55,7 +56,7 @@ class JobRunner:
         self.profile_manager = profile_manager or ProfileManager()
         self.probe = ProbeHelper()
 
-        self.temp_dir = temp_dir or Path(tempfile.gettempdir()) / "videotranscode"
+        self.temp_dir = temp_dir or Path(tempfile.gettempdir()) / "transcodr"
         self.temp_dir.mkdir(parents=True, exist_ok=True)
 
         self.replacer = SafeReplacer(
@@ -185,6 +186,23 @@ class JobRunner:
                 expected_duration = self._parse_duration_to_seconds(profile.duration)
                 if expected_duration is None:
                     logger.warning(f"Invalid profile duration format: {profile.duration}")
+
+            # Validate start_time + duration fits within source duration
+            if profile.start_time or profile.duration:
+                source_duration = self.probe.get_duration(source_for_encoding)
+                start_seconds = self._parse_duration_to_seconds(profile.start_time) if profile.start_time else 0
+
+                if start_seconds and start_seconds >= source_duration:
+                    raise ValidationError(
+                        f"start_time ({start_seconds:.1f}s) exceeds source duration ({source_duration:.1f}s)"
+                    )
+
+                if expected_duration and start_seconds is not None:
+                    end_time = start_seconds + expected_duration
+                    if end_time > source_duration:
+                        raise ValidationError(
+                            f"start_time + duration ({end_time:.1f}s) exceeds source duration ({source_duration:.1f}s)"
+                        )
 
             # Build FFmpeg arguments (use temp source for multi-profile)
             ffmpeg_args = profile.to_ffmpeg_args(
@@ -593,6 +611,9 @@ class JobRunner:
         Temp copy is created once by first profile if disable_temp_copy=False.
         Final rename (.processed/.failed) or delete happens in _do_watchfolder_cleanup().
 
+        Uses inotify for instant detection of copy completion on local filesystems,
+        with polling fallback for NFS/remote filesystems.
+
         Args:
             job: Job being executed
             ctx: Watchfolder context with file handling settings
@@ -608,50 +629,85 @@ class JobRunner:
         source_path = job.source_path
 
         if is_first_profile:
-            with JobRunner._watchfolder_lock:
-                # First profile: optionally create temp copy
-                temp_source = None
-                if not ctx.disable_temp_copy:
-                    temp_folder = Path(ctx.temp_folder) if ctx.temp_folder else self.temp_dir
-                    temp_folder.mkdir(parents=True, exist_ok=True)
-                    temp_source = temp_folder / source_path.name
-                    logger.info(f"Copying {source_path.name} to temp folder")
-                    shutil.copy2(source_path, temp_source)
-                else:
-                    logger.info(f"Encoding directly from source (disable_temp_copy): {source_path}")
+            # First profile: create temp copy if needed
+            temp_source = None
+            if not ctx.disable_temp_copy:
+                temp_folder = Path(ctx.temp_folder) if ctx.temp_folder else self.temp_dir
+                temp_folder.mkdir(parents=True, exist_ok=True)
+                temp_source = temp_folder / source_path.name
 
+                # Store state BEFORE starting copy so subsequent profiles know what to wait for
+                with JobRunner._watchfolder_lock:
+                    JobRunner._watchfolder_state[state_key] = {
+                        "source_path": source_path,
+                        "temp_source": temp_source,
+                        "copy_complete": False,
+                        "ref_count": total_profiles,
+                    }
+
+                # Do the copy OUTSIDE the lock so other profiles can check state
+                logger.info(f"Copying {source_path.name} to temp folder")
+                shutil.copy2(source_path, temp_source)
+
+                # Mark copy as complete
+                with JobRunner._watchfolder_lock:
+                    if state_key in JobRunner._watchfolder_state:
+                        JobRunner._watchfolder_state[state_key]["copy_complete"] = True
+            else:
+                logger.info(f"Encoding directly from source (disable_temp_copy): {source_path}")
                 # Store state for subsequent profiles
-                JobRunner._watchfolder_state[state_key] = {
-                    "source_path": source_path,
-                    "temp_source": temp_source,
-                    "ref_count": total_profiles,
-                }
+                with JobRunner._watchfolder_lock:
+                    JobRunner._watchfolder_state[state_key] = {
+                        "source_path": source_path,
+                        "temp_source": None,
+                        "copy_complete": True,
+                        "ref_count": total_profiles,
+                    }
 
-                return temp_source if temp_source else source_path
+            return temp_source if temp_source else source_path
 
         else:
-            # Subsequent profile: wait for first profile to set up state
-            # This handles the case where jobs run concurrently
-            max_wait_seconds = 60
-            wait_interval = 0.5
+            # Subsequent profile: wait for first profile to set up state and complete copy
+            max_state_wait = 30  # Wait up to 30s for state to appear
+            state_interval = 0.5
             elapsed = 0.0
 
-            while elapsed < max_wait_seconds:
+            # First, wait for state to be created
+            while elapsed < max_state_wait:
                 with JobRunner._watchfolder_lock:
                     state = JobRunner._watchfolder_state.get(state_key)
                     if state:
-                        return state["temp_source"] if state["temp_source"] else state["source_path"]
+                        break
+                time.sleep(state_interval)
+                elapsed += state_interval
 
-                # State not ready yet, wait and retry
-                logger.debug(f"Waiting for watchfolder state {state_key} (elapsed: {elapsed:.1f}s)")
-                time.sleep(wait_interval)
-                elapsed += wait_interval
+            if not state:
+                raise RuntimeError(
+                    f"Timeout waiting for watchfolder state {state_key} - "
+                    f"first profile may have failed to start"
+                )
 
-            # Timeout - state never became available
-            raise RuntimeError(
-                f"Timeout waiting for watchfolder state {state_key} - "
-                f"first profile may have failed"
-            )
+            temp_source = state.get("temp_source")
+            source_to_use = temp_source if temp_source else state["source_path"]
+
+            # If no temp copy, return immediately
+            if not temp_source:
+                return source_to_use
+
+            # Check if copy is already complete
+            with JobRunner._watchfolder_lock:
+                if JobRunner._watchfolder_state.get(state_key, {}).get("copy_complete"):
+                    return source_to_use
+
+            # Wait for temp copy to be ready using inotify/polling
+            logger.info(f"Waiting for temp copy to complete: {temp_source.name}")
+            if wait_for_file_ready(temp_source, timeout_seconds=300):
+                return source_to_use
+            else:
+                raise RuntimeError(
+                    f"Timeout waiting for temp copy {temp_source} - "
+                    f"first profile may have failed during copy"
+                )
 
     def _release_watchfolder_ref(
         self,

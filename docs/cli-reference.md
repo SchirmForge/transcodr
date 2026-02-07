@@ -280,7 +280,7 @@ x265-quality       libx265      vaapi        High quality x265 encoding
 x265-fast          libx265      vaapi        Fast x265 encoding
 
 Total: 3 profiles
-Location: /home/user/.config/videotranscode/profiles
+Location: /home/user/.config/transcodr/profiles
 ```
 
 ---
@@ -422,7 +422,7 @@ python -m src.cli.client submit -f encoding-request.yaml
 
 The CLI reads daemon connection settings from:
 ```
-~/.config/videotranscode/config.yaml
+~/.config/transcodr/config.yaml
 ```
 
 Default settings:

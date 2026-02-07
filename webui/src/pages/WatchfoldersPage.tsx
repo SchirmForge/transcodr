@@ -1,5 +1,7 @@
+import { useState, useMemo } from 'react'
 import { useWatchfolders, usePauseWatchfolder, useResumeWatchfolder } from '../hooks/useWatchfolders'
 import type { WatchFolderInfo } from '../api/types'
+import { FilterSelect } from '../components/ui/FilterSelect'
 
 function WatchfolderCard({
   folder,
@@ -18,13 +20,13 @@ function WatchfolderCard({
   const isMediaWatcher = folder.type === 'media'
 
   return (
-    <div className="p-4 bg-white rounded-lg shadow">
+    <div className="p-4 bg-white dark:bg-gray-800 rounded-lg shadow">
       <div className="flex justify-between items-start mb-2">
         <div className="min-w-0 flex-1">
-          <h3 className="font-medium text-gray-900 truncate" title={folder.path}>
+          <h3 className="font-medium text-gray-900 dark:text-gray-100 truncate" title={folder.path}>
             {folderName}
           </h3>
-          <p className="text-sm text-gray-500 truncate" title={folder.path}>
+          <p className="text-sm text-gray-500 dark:text-gray-400 truncate" title={folder.path}>
             {folder.path}
           </p>
         </div>
@@ -32,10 +34,10 @@ function WatchfolderCard({
           <span
             className={`px-2 py-1 text-xs font-medium rounded ${
               folder.paused
-                ? 'bg-yellow-100 text-yellow-800'
+                ? 'bg-yellow-100 dark:bg-yellow-900/50 text-yellow-800 dark:text-yellow-300'
                 : folder.active
-                  ? 'bg-green-100 text-green-800'
-                  : 'bg-gray-100 text-gray-800'
+                  ? 'bg-green-100 dark:bg-green-900/50 text-green-800 dark:text-green-300'
+                  : 'bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-300'
             }`}
           >
             {folder.paused ? 'Paused' : folder.active ? 'Active' : 'Inactive'}
@@ -44,7 +46,7 @@ function WatchfolderCard({
             <button
               onClick={onResume}
               disabled={isResuming}
-              className="px-2 py-1 text-xs bg-green-100 hover:bg-green-200 text-green-700 rounded transition-colors disabled:opacity-50"
+              className="px-2 py-1 text-xs bg-green-100 dark:bg-green-900/50 hover:bg-green-200 dark:hover:bg-green-900/70 text-green-700 dark:text-green-300 rounded transition-colors disabled:opacity-50"
             >
               Resume
             </button>
@@ -52,7 +54,7 @@ function WatchfolderCard({
             <button
               onClick={onPause}
               disabled={isPausing}
-              className="px-2 py-1 text-xs bg-yellow-100 hover:bg-yellow-200 text-yellow-700 rounded transition-colors disabled:opacity-50"
+              className="px-2 py-1 text-xs bg-yellow-100 dark:bg-yellow-900/50 hover:bg-yellow-200 dark:hover:bg-yellow-900/70 text-yellow-700 dark:text-yellow-300 rounded transition-colors disabled:opacity-50"
             >
               Pause
             </button>
@@ -62,32 +64,32 @@ function WatchfolderCard({
 
       <div className="mt-3 grid grid-cols-2 gap-x-4 gap-y-1 text-sm">
         <div>
-          <span className="text-gray-500">Type:</span>{' '}
-          <span className="text-gray-900 capitalize">{folder.type}</span>
+          <span className="text-gray-500 dark:text-gray-400">Type:</span>{' '}
+          <span className="text-gray-900 dark:text-gray-100 capitalize">{folder.type}</span>
         </div>
         <div>
-          <span className="text-gray-500">Scan:</span>{' '}
-          <span className="text-gray-900">{folder.scan_interval}s</span>
+          <span className="text-gray-500 dark:text-gray-400">Scan:</span>{' '}
+          <span className="text-gray-900 dark:text-gray-100">{folder.scan_interval}s</span>
         </div>
 
         {isMediaWatcher && folder.profiles && (
           <div>
-            <span className="text-gray-500">Profiles:</span>{' '}
-            <span className="text-gray-900">{folder.profiles.join(', ')}</span>
+            <span className="text-gray-500 dark:text-gray-400">Profiles:</span>{' '}
+            <span className="text-gray-900 dark:text-gray-100">{folder.profiles.join(', ')}</span>
           </div>
         )}
 
         {isMediaWatcher && folder.file_patterns && (
           <div>
-            <span className="text-gray-500">Patterns:</span>{' '}
-            <span className="text-gray-900 text-xs">{folder.file_patterns.join(', ')}</span>
+            <span className="text-gray-500 dark:text-gray-400">Patterns:</span>{' '}
+            <span className="text-gray-900 dark:text-gray-100 text-xs">{folder.file_patterns.join(', ')}</span>
           </div>
         )}
 
         {isMediaWatcher && (
           <div>
-            <span className="text-gray-500">Output:</span>{' '}
-            <span className="text-gray-900">
+            <span className="text-gray-500 dark:text-gray-400">Output:</span>{' '}
+            <span className="text-gray-900 dark:text-gray-100">
               {folder.use_profile_destination
                 ? 'Profile destinations'
                 : folder.destination
@@ -99,15 +101,15 @@ function WatchfolderCard({
 
         {isMediaWatcher && (folder.pending_files !== undefined && folder.pending_files > 0) && (
           <div>
-            <span className="text-gray-500">Pending:</span>{' '}
-            <span className="text-gray-900">{folder.pending_files} files</span>
+            <span className="text-gray-500 dark:text-gray-400">Pending:</span>{' '}
+            <span className="text-gray-900 dark:text-gray-100">{folder.pending_files} files</span>
           </div>
         )}
 
         {isMediaWatcher && (folder.submitted_jobs !== undefined && folder.submitted_jobs > 0) && (
           <div>
-            <span className="text-gray-500">Submitted:</span>{' '}
-            <span className="text-gray-900">{folder.submitted_jobs} jobs</span>
+            <span className="text-gray-500 dark:text-gray-400">Submitted:</span>{' '}
+            <span className="text-gray-900 dark:text-gray-100">{folder.submitted_jobs} jobs</span>
           </div>
         )}
       </div>
@@ -115,17 +117,51 @@ function WatchfolderCard({
   )
 }
 
+const typeOptions = [
+  { value: 'command', label: 'Command' },
+  { value: 'media', label: 'Media' },
+]
+
+const statusOptions = [
+  { value: 'active', label: 'Active' },
+  { value: 'paused', label: 'Paused' },
+  { value: 'inactive', label: 'Inactive' },
+]
+
+function getWatchfolderStatus(folder: WatchFolderInfo): string {
+  if (folder.paused) return 'paused'
+  if (folder.active) return 'active'
+  return 'inactive'
+}
+
 export function WatchfoldersPage() {
   const { data: watchfolders, isLoading, isError } = useWatchfolders()
   const pauseMutation = usePauseWatchfolder()
   const resumeMutation = useResumeWatchfolder()
+  const [typeFilter, setTypeFilter] = useState('')
+  const [statusFilter, setStatusFilter] = useState('')
+
+  // Filter watchfolders
+  const filteredWatchfolders = useMemo(() => {
+    if (!watchfolders) return []
+    let result = [...watchfolders]
+
+    if (typeFilter) {
+      result = result.filter(f => f.type === typeFilter)
+    }
+    if (statusFilter) {
+      result = result.filter(f => getWatchfolderStatus(f) === statusFilter)
+    }
+
+    return result
+  }, [watchfolders, typeFilter, statusFilter])
 
   if (isLoading) {
     return (
       <div>
-        <h1 className="text-2xl font-bold text-gray-900 mb-4">Watch Folders</h1>
-        <div className="mt-6 p-4 bg-white rounded-lg shadow">
-          <p className="text-gray-500 text-sm">Loading...</p>
+        <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100 mb-4">Watch Folders</h1>
+        <div className="mt-6 p-4 bg-white dark:bg-gray-800 rounded-lg shadow">
+          <p className="text-gray-500 dark:text-gray-400 text-sm">Loading...</p>
         </div>
       </div>
     )
@@ -134,9 +170,9 @@ export function WatchfoldersPage() {
   if (isError) {
     return (
       <div>
-        <h1 className="text-2xl font-bold text-gray-900 mb-4">Watch Folders</h1>
-        <div className="mt-6 p-4 bg-red-50 rounded-lg shadow border border-red-200">
-          <p className="text-red-600 text-sm">Failed to load watch folders</p>
+        <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100 mb-4">Watch Folders</h1>
+        <div className="mt-6 p-4 bg-red-50 dark:bg-red-900/20 rounded-lg shadow border border-red-200 dark:border-red-800">
+          <p className="text-red-600 dark:text-red-400 text-sm">Failed to load watch folders</p>
         </div>
       </div>
     )
@@ -144,12 +180,28 @@ export function WatchfoldersPage() {
 
   return (
     <div>
-      <h1 className="text-2xl font-bold text-gray-900 mb-4">Watch Folders</h1>
-      <p className="text-gray-600 mb-4">Configured watch folders and their status.</p>
+      <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100 mb-4">Watch Folders</h1>
+      <p className="text-gray-600 dark:text-gray-400 mb-4">Configured watch folders and their status.</p>
 
-      {watchfolders && watchfolders.length > 0 ? (
+      {/* Filters */}
+      <div className="flex flex-wrap gap-4 mb-4">
+        <FilterSelect
+          label="Type"
+          value={typeFilter}
+          onChange={setTypeFilter}
+          options={typeOptions}
+        />
+        <FilterSelect
+          label="Status"
+          value={statusFilter}
+          onChange={setStatusFilter}
+          options={statusOptions}
+        />
+      </div>
+
+      {filteredWatchfolders.length > 0 ? (
         <div className="space-y-4">
-          {watchfolders.map((folder) => (
+          {filteredWatchfolders.map((folder) => (
             <WatchfolderCard
               key={folder.id}
               folder={folder}
@@ -161,8 +213,10 @@ export function WatchfoldersPage() {
           ))}
         </div>
       ) : (
-        <div className="p-4 bg-white rounded-lg shadow">
-          <p className="text-gray-500 text-sm">No watch folders configured</p>
+        <div className="p-4 bg-white dark:bg-gray-800 rounded-lg shadow">
+          <p className="text-gray-500 dark:text-gray-400 text-sm">
+            {watchfolders && watchfolders.length > 0 ? 'No watch folders match the current filters' : 'No watch folders configured'}
+          </p>
         </div>
       )}
     </div>

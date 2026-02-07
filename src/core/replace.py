@@ -42,7 +42,7 @@ class SafeReplacer:
         """
         self.backup_originals = backup_originals
         self.backup_dir = backup_dir
-        self.temp_dir = temp_dir or Path(tempfile.gettempdir()) / "videotranscode"
+        self.temp_dir = temp_dir or Path(tempfile.gettempdir()) / "transcodr"
         self.duration_tolerance_percent = duration_tolerance_percent
         self.probe = ProbeHelper()
 

@@ -263,13 +263,13 @@ recursive: true
 To automatically process command files, create a command-type watchfolder:
 
 ```yaml
-# ~/.config/videotranscode/watchfolders/commands.yaml
-watchfolder_location: /var/spool/videotranscode
+# ~/.config/transcodr/watchfolders/commands.yaml
+watchfolder_location: /var/spool/transcodr
 watchfolder_type: command
 scan_interval: 5
 ```
 
-Then drop `.yaml` command files into `/var/spool/videotranscode/`.
+Then drop `.yaml` command files into `/var/spool/transcodr/`.
 
 ### Command File Lifecycle
 

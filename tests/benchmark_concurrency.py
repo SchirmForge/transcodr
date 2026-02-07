@@ -229,7 +229,7 @@ def extract_clip_from_video(source_video: Path, duration: int = 10) -> Optional[
         print(f"  Extracting from middle ({start_time:.0f}s mark)")
 
     # Create temp directory
-    temp_dir = Path(tempfile.gettempdir()) / "videotranscode_benchmark"
+    temp_dir = Path(tempfile.gettempdir()) / "transcodr_benchmark"
     temp_dir.mkdir(exist_ok=True)
 
     # Output path
@@ -268,7 +268,7 @@ def create_test_files(count: int, duration: int = 10, source_video: Optional[Pat
     Returns:
         List of paths to created test files
     """
-    temp_dir = Path(tempfile.gettempdir()) / "videotranscode_benchmark"
+    temp_dir = Path(tempfile.gettempdir()) / "transcodr_benchmark"
     temp_dir.mkdir(exist_ok=True)
 
     # If source video provided, extract clip and make copies
@@ -530,7 +530,7 @@ def main():
         )
 
         # Cleanup option
-        temp_dir = Path(tempfile.gettempdir()) / "videotranscode_benchmark"
+        temp_dir = Path(tempfile.gettempdir()) / "transcodr_benchmark"
         print(f"\nTest files location: {temp_dir}")
 
         # Flush output to ensure everything is printed
@@ -550,7 +550,7 @@ def main():
                     print(f"Test files kept at: {temp_dir}")
             except (EOFError, KeyboardInterrupt):
                 print(f"\n\nTest files kept at: {temp_dir}")
-                print("To delete manually: rm -rf /tmp/videotranscode_benchmark")
+                print("To delete manually: rm -rf /tmp/transcodr_benchmark")
 
     finally:
         # Always restore terminal state, even on error/interrupt

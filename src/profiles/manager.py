@@ -22,12 +22,12 @@ class ProfileManager:
         Initialize profile manager.
 
         Args:
-            user_profile_dir: Directory for user profiles (default: ~/.config/videotranscode/profiles)
+            user_profile_dir: Directory for user profiles (default: ~/.config/transcodr/profiles)
         """
         self.builtin_profile_dir = Path(__file__).parent / "builtin"
 
         if user_profile_dir is None:
-            user_profile_dir = Path.home() / ".config" / "videotranscode" / "profiles"
+            user_profile_dir = Path.home() / ".config" / "transcodr" / "profiles"
 
         self.user_profile_dir = user_profile_dir
         self._cache: dict[str, Profile] = {}

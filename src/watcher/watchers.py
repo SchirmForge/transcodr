@@ -442,7 +442,7 @@ class MediaFileWatcher:
         if self.config.temp_folder:
             temp_folder = self.config.temp_folder
         else:
-            temp_folder = Path(tempfile.gettempdir()) / "videotranscode"
+            temp_folder = Path(tempfile.gettempdir()) / "transcodr"
         temp_folder.mkdir(parents=True, exist_ok=True)
         return temp_folder
 

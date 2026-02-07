@@ -4,21 +4,21 @@
 
 ### Conda Environment
 
-This project uses a conda environment named `videotranscode`. To activate it:
+This project uses a conda environment named `transcodr`. To activate it:
 
 ```bash
 # Option 1: Source the activation script
 source activate.sh
 
 # Option 2: Manually activate
-conda activate videotranscode
+conda activate transcodr
 ```
 
 If the environment doesn't exist, create it:
 
 ```bash
-conda create -n videotranscode python=3.12
-conda activate videotranscode
+conda create -n transcodr python=3.12
+conda activate transcodr
 pip install -r requirements.txt
 ```
 
@@ -26,7 +26,7 @@ pip install -r requirements.txt
 
 Video Transcode uses a configuration directory located at:
 ```
-~/.config/videotranscode/
+~/.config/transcodr/
 ```
 
 This directory contains:
@@ -46,7 +46,7 @@ python src/cli/init.py
 ```
 
 This will:
-- Create `~/.config/videotranscode/` directory structure
+- Create `~/.config/transcodr/` directory structure
 - Generate a default `config.yaml` with commented settings
 - Copy built-in profiles to the profiles directory
 
@@ -55,14 +55,14 @@ This will:
 Check that the configuration was created:
 
 ```bash
-ls -la ~/.config/videotranscode/
+ls -la ~/.config/transcodr/
 # Should show:
 # config.yaml
 # profiles/
 ```
 
 ```bash
-ls -la ~/.config/videotranscode/profiles/
+ls -la ~/.config/transcodr/profiles/
 # Should show built-in profiles:
 # base-x265.yaml
 # x265-balanced.yaml
@@ -72,7 +72,7 @@ ls -la ~/.config/videotranscode/profiles/
 
 ## Configuration File
 
-The main configuration file is `~/.config/videotranscode/config.yaml`.
+The main configuration file is `~/.config/transcodr/config.yaml`.
 
 ### Default Configuration
 
@@ -93,7 +93,7 @@ daemon:
 
 # Storage settings
 storage:
-  temp_dir: /tmp/videotranscode    # Temporary directory for encoding
+  temp_dir: /tmp/transcodr    # Temporary directory for encoding
   backup_originals: true           # Create backup of original files
   backup_dir: ./.originals         # Backup directory (relative or absolute)
   min_free_space_gb: 10            # Minimum free space required (GB)
@@ -171,7 +171,7 @@ logging:
 
 ## Watch Folders
 
-Watch folders are configured in separate YAML files in `~/.config/videotranscode/watchfolders/`.
+Watch folders are configured in separate YAML files in `~/.config/transcodr/watchfolders/`.
 
 See [Watch Folders Guide](watchfolders.md) for detailed documentation.
 
@@ -184,7 +184,7 @@ See [Profiles Guide](profiles.md) for detailed documentation.
 ## Directory Structure
 
 ```
-~/.config/videotranscode/
+~/.config/transcodr/
 ├── config.yaml              # Main configuration
 ├── profiles/                # User profiles directory
 │   ├── base-x265.yaml      # Copied from built-in
@@ -200,7 +200,7 @@ See [Profiles Guide](profiles.md) for detailed documentation.
 ### View Current Configuration
 
 ```bash
-cat ~/.config/videotranscode/config.yaml
+cat ~/.config/transcodr/config.yaml
 ```
 
 ### Validate Configuration
@@ -225,7 +225,7 @@ To reset configuration to defaults:
 
 ```bash
 # Backup existing config
-cp ~/.config/videotranscode/config.yaml ~/.config/videotranscode/config.yaml.backup
+cp ~/.config/transcodr/config.yaml ~/.config/transcodr/config.yaml.backup
 
 # Recreate default config
 python src/cli/init.py
@@ -251,7 +251,7 @@ You can override the configuration directory location:
 
 ```bash
 # Use custom config directory
-export VIDEOTRANSCODE_CONFIG_DIR=/path/to/custom/config
+export transcodr_CONFIG_DIR=/path/to/custom/config
 
 # Run with custom config
 python src/cli/init.py
@@ -282,13 +282,13 @@ python src/cli/init.py
 If you get permission errors, check that you have write access to:
 
 ```bash
-ls -ld ~/.config/videotranscode/
+ls -ld ~/.config/transcodr/
 ```
 
 If the directory is owned by root or another user, fix permissions:
 
 ```bash
-sudo chown -R $USER:$USER ~/.config/videotranscode/
+sudo chown -R $USER:$USER ~/.config/transcodr/
 ```
 
 ## Best Practices

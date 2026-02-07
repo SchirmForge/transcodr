@@ -126,7 +126,7 @@ class TranscodeDaemon:
 ```
 
 **Process management:**
-- PID file: `/var/run/videotranscode.pid` (single instance)
+- PID file: `/var/run/transcodr.pid` (single instance)
 - Signal handlers: SIGTERM (graceful stop), SIGINT (interrupt), SIGHUP (reload config)
 - Socket: Unix socket or TCP (127.0.0.1:8765)
 - Systemd service (future)
@@ -374,7 +374,7 @@ transcode-cli job watch <id>  # Opens WebSocket, shows live progress bar
 
 ### Configuration Hierarchy
 ```
-~/.config/videotranscode/
+~/.config/transcodr/
 ├── config.yaml              # Main app configuration
 ├── profiles/                # User custom profiles
 │   ├── my-profile.yaml
@@ -389,7 +389,7 @@ daemon:
   host: 127.0.0.1           # API bind address
   port: 8765                # API port
   max_concurrent_jobs: 2    # Worker thread count
-  pid_file: /var/run/videotranscode.pid
+  pid_file: /var/run/transcodr.pid
 
 # FFmpeg settings
 ffmpeg:
@@ -398,7 +398,7 @@ ffmpeg:
 
 # Storage settings
 storage:
-  temp_dir: /tmp/videotranscode
+  temp_dir: /tmp/transcodr
   backup_originals: true
   backup_dir: ./.originals      # Relative to source
   min_free_space_gb: 10
@@ -406,7 +406,7 @@ storage:
 # Logging settings
 logging:
   level: INFO                   # DEBUG|INFO|WARNING|ERROR
-  dir: ~/.local/share/videotranscode/logs
+  dir: ~/.local/share/transcodr/logs
   rotation: daily
   per_job_logs: true            # Separate log file per job
 
@@ -1019,7 +1019,7 @@ This prevents re-detection of files during encoding.
 
 ### Configuration (v0.1)
 
-Watch folders are configured in `~/.config/videotranscode/watchfolders/`:
+Watch folders are configured in `~/.config/transcodr/watchfolders/`:
 
 ```yaml
 # Command watchfolder
@@ -1165,7 +1165,7 @@ class JobLogger:
     """Context manager for per-job logging"""
     def __init__(self, job_id: str):
         self.job_id = job_id
-        self.log_file = Path(f"~/.local/share/videotranscode/logs/job-{job_id}.log")
+        self.log_file = Path(f"~/.local/share/transcodr/logs/job-{job_id}.log")
 
     def __enter__(self):
         self.logger = logging.getLogger(f"job.{self.job_id}")
@@ -1187,7 +1187,7 @@ class JobLogger:
 ## Project Structure (Revised)
 
 ```
-videotranscode/
+transcodr/
 ├── src/
 │   ├── core/
 │   │   ├── __init__.py

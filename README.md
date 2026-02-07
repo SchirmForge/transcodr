@@ -97,8 +97,8 @@ A robust, production-ready video transcoding system with daemon, CLI, and API in
 
 ```bash
 # Create conda environment
-conda create -n videotranscode python=3.12
-conda activate videotranscode
+conda create -n transcodr python=3.12
+conda activate transcodr
 
 # Install dependencies
 pip install -r requirements.txt
@@ -215,7 +215,7 @@ Two types of watch folders are supported:
 Monitors a folder for YAML command files:
 
 ```yaml
-# ~/.config/videotranscode/watchfolders/commands.yaml
+# ~/.config/transcodr/watchfolders/commands.yaml
 watchfolder_location: /tmp/encode-commands
 watchfolder_type: command
 scan_interval: 5
@@ -234,7 +234,7 @@ output_mode: replace
 Monitors a folder for video files directly:
 
 ```yaml
-# ~/.config/videotranscode/watchfolders/downloads.yaml
+# ~/.config/transcodr/watchfolders/downloads.yaml
 watchfolder_location: $HOME/downloads
 watchfolder_type: media
 scan_interval: 10
@@ -253,7 +253,7 @@ preserve_folder_structure: true
 Process entire folders dropped into the watch location:
 
 ```yaml
-# ~/.config/videotranscode/watchfolders/folder-drop.yaml
+# ~/.config/transcodr/watchfolders/folder-drop.yaml
 watchfolder_location: $HOME/encode-folders
 watchfolder_type: media
 scan_interval: 5
@@ -297,10 +297,10 @@ See [docs/api-reference.md](docs/api-reference.md) for complete documentation.
 
 ## Configuration
 
-Configuration is stored in `~/.config/videotranscode/`:
+Configuration is stored in `~/.config/transcodr/`:
 
 ```
-~/.config/videotranscode/
+~/.config/transcodr/
 ├── config.yaml          # Main configuration
 ├── profiles/            # User profiles
 ├── watchfolders/        # Watchfolder configs
@@ -317,7 +317,7 @@ daemon:
   max_concurrent_jobs: 2
 
 storage:
-  temp_dir: /tmp/videotranscode
+  temp_dir: /tmp/transcodr
   backup_originals: true
   backup_dir: .originals
   root_media: ~/Videos   # Base path for $root_media placeholder

@@ -100,7 +100,7 @@ def setup_logging(
     # File handler (structured or human-readable)
     if log_dir:
         log_dir.mkdir(parents=True, exist_ok=True)
-        log_file = log_dir / "videotranscode.log"
+        log_file = log_dir / "transcodr.log"
 
         file_handler = RotatingFileHandler(
             log_file,

@@ -224,3 +224,136 @@ class InotifyWatcher:
             fnmatch(filename.lower(), pattern.lower())
             for pattern in self.file_patterns
         )
+
+
+def wait_for_file_ready(
+    file_path: Path,
+    timeout_seconds: float = 300.0,
+    poll_interval: float = 1.0,
+    stability_checks: int = 2,
+) -> bool:
+    """
+    Wait for a file to be ready (copy/write complete).
+
+    Uses inotify (CLOSE_WRITE) on local filesystems for instant detection.
+    Falls back to file stability polling on NFS/remote filesystems.
+
+    Args:
+        file_path: Path to the file to wait for
+        timeout_seconds: Maximum time to wait (default: 5 minutes)
+        poll_interval: Interval between stability checks for polling fallback
+        stability_checks: Number of consecutive stable checks needed for polling
+
+    Returns:
+        True if file is ready, False if timeout or file doesn't exist
+    """
+    import time
+
+    if not file_path.exists():
+        logger.warning(f"wait_for_file_ready: file does not exist: {file_path}")
+        return False
+
+    # Try inotify on local filesystems
+    if INOTIFY_AVAILABLE and is_local_filesystem(file_path.parent):
+        return _wait_for_file_inotify(file_path, timeout_seconds)
+    else:
+        # Fall back to polling for NFS/remote filesystems
+        return _wait_for_file_polling(file_path, timeout_seconds, poll_interval, stability_checks)
+
+
+def _wait_for_file_inotify(file_path: Path, timeout_seconds: float) -> bool:
+    """Wait for file using inotify CLOSE_WRITE event."""
+    import time
+    from threading import Event as ThreadEvent
+
+    logger.debug(f"Waiting for file ready (inotify): {file_path.name}")
+
+    ready_event = ThreadEvent()
+    target_name = file_path.name
+
+    try:
+        inotify = INotify()
+        # Watch the parent directory for CLOSE_WRITE on our file
+        watch_flags = flags.CLOSE_WRITE | flags.MOVED_TO
+        inotify.add_watch(str(file_path.parent), watch_flags)
+
+        start_time = time.time()
+        while time.time() - start_time < timeout_seconds:
+            # Check if file is already closed (might have completed before we started watching)
+            # A file is "ready" if we can open it exclusively or if size is stable
+            try:
+                current_size = file_path.stat().st_size
+                current_mtime = file_path.stat().st_mtime
+                # Brief wait and re-check
+                time.sleep(0.1)
+                if file_path.stat().st_size == current_size and file_path.stat().st_mtime == current_mtime:
+                    # File appears stable, assume it's ready
+                    logger.debug(f"File already ready (stable): {file_path.name}")
+                    return True
+            except (OSError, FileNotFoundError):
+                pass
+
+            # Wait for inotify events
+            remaining = timeout_seconds - (time.time() - start_time)
+            if remaining <= 0:
+                break
+
+            events = inotify.read(timeout=min(int(remaining * 1000), 1000))
+            for event in events:
+                if event.name == target_name:
+                    logger.debug(f"File ready (inotify): {file_path.name}")
+                    return True
+
+        logger.warning(f"Timeout waiting for file (inotify): {file_path.name}")
+        return False
+
+    except Exception as e:
+        logger.warning(f"Inotify wait failed, falling back to polling: {e}")
+        remaining = timeout_seconds - (time.time() - start_time) if 'start_time' in dir() else timeout_seconds
+        return _wait_for_file_polling(file_path, remaining, 1.0, 2)
+    finally:
+        try:
+            inotify.close()
+        except Exception:
+            pass
+
+
+def _wait_for_file_polling(
+    file_path: Path,
+    timeout_seconds: float,
+    poll_interval: float,
+    stability_checks: int,
+) -> bool:
+    """Wait for file using size/mtime stability polling (NFS fallback)."""
+    import time
+
+    logger.debug(f"Waiting for file ready (polling): {file_path.name}")
+
+    start_time = time.time()
+    last_size = -1
+    last_mtime = -1.0
+    stable_count = 0
+
+    while time.time() - start_time < timeout_seconds:
+        try:
+            stat_info = file_path.stat()
+            current_size = stat_info.st_size
+            current_mtime = stat_info.st_mtime
+
+            if current_size == last_size and current_mtime == last_mtime:
+                stable_count += 1
+                if stable_count >= stability_checks:
+                    logger.debug(f"File ready (stable): {file_path.name}")
+                    return True
+            else:
+                stable_count = 0
+                last_size = current_size
+                last_mtime = current_mtime
+
+        except (OSError, FileNotFoundError):
+            stable_count = 0
+
+        time.sleep(poll_interval)
+
+    logger.warning(f"Timeout waiting for file (polling): {file_path.name}")
+    return False

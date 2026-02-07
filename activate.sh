@@ -1,5 +1,5 @@
 #!/bin/bash
-# Activate the videotranscode conda environment
+# Activate the transcodr conda environment
 # Usage: source activate.sh
 
 # Check if conda is available
@@ -9,15 +9,15 @@ if ! command -v conda &> /dev/null; then
 fi
 
 # Activate the environment
-conda activate videotranscode
+conda activate transcodr
 
 # Verify activation
-if [ "$CONDA_DEFAULT_ENV" = "videotranscode" ]; then
-    echo "✓ Activated conda environment: videotranscode"
+if [ "$CONDA_DEFAULT_ENV" = "transcodr" ]; then
+    echo "✓ Activated conda environment: transcodr"
     echo "  Python: $(which python)"
     echo "  Version: $(python --version)"
 else
-    echo "Error: Failed to activate videotranscode environment"
-    echo "Create it with: conda create -n videotranscode python=3.12"
+    echo "Error: Failed to activate transcodr environment"
+    echo "Create it with: conda create -n transcodr python=3.12"
     return 1 2>/dev/null || exit 1
 fi

@@ -67,7 +67,7 @@ Examples:
         "--config",
         type=Path,
         default=None,
-        help="Path to config file (default: ~/.config/videotranscode/config.yaml)",
+        help="Path to config file (default: ~/.config/transcodr/config.yaml)",
     )
 
     args = parser.parse_args()

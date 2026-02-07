@@ -21,7 +21,7 @@
 #
 # Installation:
 #   1. Customize paths below
-#   2. Copy to ~/.config/videotranscode/watchfolders/extract-samples.yaml
+#   2. Copy to ~/.config/transcodr/watchfolders/extract-samples.yaml
 #   3. Restart daemon or wait for config reload
 
 watchfolder_location: /media/extract-input/

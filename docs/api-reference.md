@@ -42,7 +42,7 @@ Get daemon status and queue information.
     "qsv": false,
     "recommended": "vaapi"
   },
-  "config_path": "/home/user/.config/videotranscode/config.yaml"
+  "config_path": "/home/user/.config/transcodr/config.yaml"
 }
 ```
 
@@ -425,7 +425,7 @@ Reload configuration and watchfolders without restarting the daemon.
 {
   "success": true,
   "message": "Configuration reloaded successfully",
-  "config_path": "/home/user/.config/videotranscode/config.yaml"
+  "config_path": "/home/user/.config/transcodr/config.yaml"
 }
 ```
 

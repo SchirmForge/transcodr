@@ -18,7 +18,7 @@ class WatchfolderService:
     """
     Manages watchfolders based on configuration files.
 
-    Loads watchfolder configurations from ~/.config/videotranscode/watchfolders/
+    Loads watchfolder configurations from ~/.config/transcodr/watchfolders/
     and starts appropriate watchers:
     - CommandFileWatcher for 'command' type (watches for YAML command files)
     - MediaFileWatcher for 'media' type (watches for video/audio files)
