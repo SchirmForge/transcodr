@@ -148,6 +148,7 @@ Examples:
     print(f"  Hardware accel:    {config.ffmpeg.hardware_accel}")
     print()
     print("ENDPOINTS:")
+    print(f"  Web UI:            http://{host}:{port}")
     print(f"  API Docs:          http://{host}:{port}/docs")
     print(f"  Health:            http://{host}:{port}/health")
     print(f"  Status:            http://{host}:{port}/status")

@@ -3,10 +3,12 @@
 import logging
 from contextlib import asynccontextmanager
 from datetime import datetime
+from pathlib import Path
 from typing import Optional
 
-from fastapi import FastAPI, HTTPException, Query, BackgroundTasks
+from fastapi import FastAPI, HTTPException, Query, BackgroundTasks, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 
 from .models import (
     DaemonStatus,
@@ -108,19 +110,18 @@ app.add_middleware(
 )
 
 
+# Middleware to strip /api prefix so web UI API calls (/api/jobs -> /jobs) work
+@app.middleware("http")
+async def strip_api_prefix(request: Request, call_next):
+    path = request.scope["path"]
+    if path.startswith("/api/") or path == "/api":
+        request.scope["path"] = path[4:] or "/"
+    return await call_next(request)
+
+
 # =============================================================================
 # Status Endpoints
 # =============================================================================
-
-@app.get("/", tags=["Status"])
-async def root():
-    """Root endpoint - basic API info."""
-    return {
-        "name": "Transcodr Daemon",
-        "version": VERSION,
-        "docs": "/docs",
-    }
-
 
 @app.get("/status", response_model=DaemonStatus, tags=["Status"])
 async def get_status():
@@ -590,3 +591,12 @@ async def delete_profile(
     profile_file.unlink()
     pm.clear_cache()
     return {"success": True, "message": f"Profile deleted: {name}"}
+
+
+# =============================================================================
+# Web UI Static Files (must be after all route definitions)
+# =============================================================================
+
+_webui_dir = Path(__file__).parent.parent.parent / "webui" / "dist"
+if _webui_dir.is_dir():
+    app.mount("/", StaticFiles(directory=str(_webui_dir), html=True), name="webui")
