@@ -53,7 +53,7 @@ class StorageConfig(BaseModel):
     """Storage configuration."""
 
     temp_dir: Path = Field(
-        default=Path("/tmp/videotranscode"),
+        default=Path("/tmp/transcodr"),
         description="Temporary directory for encoding",
     )
     backup_originals: bool = Field(
@@ -138,7 +138,7 @@ class Config(BaseModel):
 
     def get_config_dir(self) -> Path:
         """Get configuration directory."""
-        return Path.home() / ".config" / "videotranscode"
+        return Path.home() / ".config" / "transcodr"
 
     def get_profiles_dir(self) -> Path:
         """Get profiles directory."""

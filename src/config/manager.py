@@ -79,7 +79,7 @@ class ConfigManager:
     and providing default configuration.
     """
 
-    DEFAULT_CONFIG_PATH = Path.home() / ".config" / "videotranscode" / "config.yaml"
+    DEFAULT_CONFIG_PATH = Path.home() / ".config" / "transcodr" / "config.yaml"
 
     @staticmethod
     def get_default_config() -> Config:
@@ -97,7 +97,7 @@ class ConfigManager:
         Load configuration from file.
 
         Args:
-            config_path: Path to config file (default: ~/.config/videotranscode/config.yaml)
+            config_path: Path to config file (default: ~/.config/transcodr/config.yaml)
 
         Returns:
             Config object
@@ -205,7 +205,7 @@ class ConfigManager:
         config_path.parent.mkdir(parents=True, exist_ok=True)
 
         # Create config with helpful comments
-        config_content = """# Video Transcode Configuration
+        config_content = """# Transcodr Configuration
 
 # FFmpeg settings
 ffmpeg:
@@ -221,7 +221,7 @@ daemon:
 
 # Storage settings
 storage:
-  temp_dir: /tmp/videotranscode    # Temporary directory for encoding
+  temp_dir: /tmp/transcodr    # Temporary directory for encoding
   backup_originals: true           # Create backup of original files
   backup_dir: ./.originals         # Backup directory (relative or absolute)
   min_free_space_gb: 10            # Minimum free space required (GB)
@@ -303,7 +303,7 @@ hot_folders: []
     @staticmethod
     def get_config_dir() -> Path:
         """Get configuration directory path."""
-        return Path.home() / ".config" / "videotranscode"
+        return Path.home() / ".config" / "transcodr"
 
     @staticmethod
     def get_profiles_dir() -> Path:
@@ -327,9 +327,9 @@ hot_folders: []
         Ensure configuration directory structure exists.
 
         Creates:
-        - ~/.config/videotranscode/
-        - ~/.config/videotranscode/profiles/
-        - ~/.config/videotranscode/watchfolders/
+        - ~/.config/transcodr/
+        - ~/.config/transcodr/profiles/
+        - ~/.config/transcodr/watchfolders/
         """
         config_dir = ConfigManager.get_config_dir()
         profiles_dir = ConfigManager.get_profiles_dir()
