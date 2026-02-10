@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Video Transcode Daemon entry point."""
+"""Transcodr Daemon entry point."""
 
 import argparse
 import logging
@@ -18,7 +18,7 @@ from src.core.logging import setup_logging
 def main():
     """Run the video transcode daemon."""
     parser = argparse.ArgumentParser(
-        description="Video Transcode Daemon",
+        description="Transcodr Daemon",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
@@ -122,7 +122,7 @@ Examples:
     temp_dir_expanded = expand_path(config.storage.temp_dir)
 
     print("=" * 70)
-    print("VIDEO TRANSCODE DAEMON")
+    print("TRANSCODR DAEMON")
     print("=" * 70)
     print()
     print("SERVER:")

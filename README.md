@@ -1,4 +1,4 @@
-# Video Transcode
+# Transcodr
 
 A robust, production-ready video transcoding system with daemon, CLI, and API interfaces.
 

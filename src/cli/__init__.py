@@ -1,3 +1,3 @@
-"""CLI module for video transcoding."""
+"""CLI module for Transcodr."""
 
 __all__ = []

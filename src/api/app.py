@@ -1,4 +1,4 @@
-"""FastAPI application for video transcoding daemon."""
+"""FastAPI application for Transcodr daemon."""
 
 import logging
 from contextlib import asynccontextmanager
@@ -92,7 +92,7 @@ async def lifespan(app: FastAPI):
 
 # Create FastAPI app
 app = FastAPI(
-    title="Video Transcode Daemon",
+    title="Transcodr Daemon",
     description="REST API for video transcoding with FFmpeg",
     version=VERSION,
     lifespan=lifespan,
@@ -116,7 +116,7 @@ app.add_middleware(
 async def root():
     """Root endpoint - basic API info."""
     return {
-        "name": "Video Transcode Daemon",
+        "name": "Transcodr Daemon",
         "version": VERSION,
         "docs": "/docs",
     }
