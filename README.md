@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="webui/src/assets/videoforge-final-alpha.png" alt="Video Forge" width="220" />
+  <img src="./docs/assets/transcodr-alpha.png" alt="TransCoDR"  />
 </p>
 
 # Transcodr
