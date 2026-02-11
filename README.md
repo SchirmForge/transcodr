@@ -1,39 +1,46 @@
 <p align="center">
-  <img src="./docs/assets/transcodr-alpha.png" alt="Transcodr"/>
+  <img src="webui/src/assets/videoforge-final-alpha.png" alt="Video Forge" width="220" />
 </p>
 
 # Transcodr
 
-Transcodr is a local-first video transcoding system built for reliable batch processing. It runs a daemon with a clean REST API, and a fast Web UI that uses the same API for job control, profiles, and system status.
+Transcodr is a local‑first video transcoding platform for creators and small studios. It runs a reliable daemon with a REST API and a fast Web UI, so you can batch encode, automate with watchfolders, and keep full control of your media—without recurring SaaS costs.
+
+## Why Transcodr
+
+- Own your pipeline and avoid expensive cloud workflows
+- Process large libraries safely with repeatable profiles
+- Use your hardware acceleration for faster encodes
+- Automate ingestion with watchfolders and a clean API
 
 ## Key Features
 
 - Daemon + REST API core
 - Web UI powered by the API
-- Profile-driven encoding (single or multi-profile)
+- Profile‑driven encoding (single or multi‑profile)
 - Hardware acceleration: VAAPI (AMD/Intel), NVENC, QSV
 - Watchfolders for automated ingest
 - Safe replace or destination outputs
-- SQLite-backed queue that survives restarts
-- Multi-daemon orchestration (planned, not yet implemented)
+- SQLite‑backed queue that survives restarts
+- Multi‑daemon orchestration (planned, not yet implemented)
 
 ## Get Started
 
 - Quick install: docs/configuration.md#prerequisites
 - Full install and configuration: docs/configuration.md
-- Development setup: local-docs/readme-dev.md
 
-## Learn More
+## Documentation
 
-- Profiles guide: docs/profiles.md
-- Watchfolders guide: docs/watchfolders.md
-- Architecture: docs/architecture.md
-- API reference: docs/api-reference.md
-- CLI reference: docs/cli-reference.md
-- Performance tuning: docs/concurrency-tuning.md
-- Roadmap: docs/roadmap.md
-- Current dev status: local-docs/version0.4.md
+- Configuration: how to install, initialize, and tune the daemon. See docs/configuration.md
+- Profiles: define reusable encoding recipes and hardware variants. See docs/profiles.md
+- Watchfolders: automate encoding from folders and command files. See docs/watchfolders.md
+- Commands: YAML request format for jobs and watchfolders. See docs/commands.md
+- API reference: endpoints for UI/CLI integrations. See docs/api-reference.md
+- CLI reference: command‑line usage and helpers. See docs/cli-reference.md
+- Architecture: system design and component overview. See docs/architecture.md
+- Concurrency tuning: maximize throughput safely. See docs/concurrency-tuning.md
+- Roadmap: planned features and direction. See docs/roadmap.md
 
 ## License
 
-TBD
+See LICENSE.
