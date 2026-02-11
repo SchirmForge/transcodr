@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { NavLink, useLocation, useNavigate } from 'react-router-dom'
+import { useStatus } from '../../hooks/useStatus'
 import logoImg from '../../assets/transcodr-final-alpha.png'
 
 interface NavItem {
@@ -26,8 +27,8 @@ const navigation: NavSection[] = [
     id: 'configuration',
     title: 'Configuration',
     items: [
-      { label: 'Watch Folders', to: '/configuration/watchfolders' },
-      { label: 'Profiles', to: '/configuration/profiles' },
+      { label: 'Watch Folders', to: '/encoding-rules/watchfolders' },
+      { label: 'Profiles', to: '/encoding-rules/profiles' },
     ],
   },
   {
@@ -74,6 +75,7 @@ function findActiveSectionId(pathname: string): string | null {
 export function Sidebar() {
   const location = useLocation()
   const navigate = useNavigate()
+  const { data: status } = useStatus()
   const [expandedSection, setExpandedSection] = useState<string | null>(null)
 
   // Auto-expand section based on current route
@@ -97,7 +99,7 @@ export function Sidebar() {
     <aside className="w-56 bg-graphite-200 dark:bg-graphite-950 text-steel-800 dark:text-steel-100 flex flex-col min-h-screen">
       <div className="p-4">
         <img src={logoImg} alt="Video Forge" className="w-full" />
-        <span className="text-xs text-steel-400 block text-center mt-1">v0.3</span>
+        <span className="text-xs text-steel-400 block text-center mt-1">{status ? `v${status.version}` : ''}</span>
       </div>
       <nav className="flex-1 p-2 overflow-y-auto">
         {navigation.map((section) => {

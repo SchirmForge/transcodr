@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react'
 import { useHistoryJobs, useRetryJob } from '../../hooks/useJobs'
-import { useClearCompleted, useClearFailed } from '../../hooks/useQueue'
+import { useClearCompleted, useClearFailed, useClearWarning } from '../../hooks/useQueue'
 import type { JobInfo } from '../../api/types'
 import { FilterSelect } from '../../components/ui/FilterSelect'
 import { SortSelect } from '../../components/ui/SortSelect'
@@ -12,6 +12,8 @@ function getStatusColor(status: string): string {
   switch (status) {
     case 'completed':
       return 'bg-green-100 dark:bg-green-900/50 text-green-800 dark:text-green-300'
+    case 'warning':
+      return 'bg-amber-100 dark:bg-amber-900/50 text-amber-800 dark:text-amber-300'
     case 'failed':
       return 'bg-red-100 dark:bg-red-900/50 text-red-800 dark:text-red-300'
     case 'cancelled':
@@ -70,10 +72,15 @@ function HistoryJobCard({ job, onRetry }: { job: JobInfo; onRetry: () => void })
           <span>Completed:</span>
           <span className="text-gray-900 dark:text-gray-100">{formatDate(job.completed_at)}</span>
         </div>
-        {job.status === 'completed' && job.output_size_bytes > 0 && (
+        {(job.status === 'completed' || job.status === 'warning') && job.output_size_bytes > 0 && (
           <div className="flex justify-between">
             <span>Output size:</span>
             <span className="text-gray-900 dark:text-gray-100">{formatBytes(job.output_size_bytes)}</span>
+          </div>
+        )}
+        {job.status === 'warning' && job.warning_message && (
+          <div className="mt-2 p-2 bg-amber-50 dark:bg-amber-900/30 rounded text-amber-700 dark:text-amber-300 text-xs whitespace-pre-line">
+            {job.warning_message}
           </div>
         )}
         {job.status === 'failed' && job.error_message && (
@@ -88,6 +95,7 @@ function HistoryJobCard({ job, onRetry }: { job: JobInfo; onRetry: () => void })
 
 const statusOptions = [
   { value: 'completed', label: 'Completed' },
+  { value: 'warning', label: 'Warning' },
   { value: 'failed', label: 'Failed' },
   { value: 'cancelled', label: 'Cancelled' },
 ]
@@ -104,6 +112,7 @@ export function HistoryPage() {
   const { data: jobs, isLoading, isError } = useHistoryJobs()
   const retryMutation = useRetryJob()
   const clearCompletedMutation = useClearCompleted()
+  const clearWarningMutation = useClearWarning()
   const clearFailedMutation = useClearFailed()
   const [statusFilter, setStatusFilter] = useState('')
   const [profileFilter, setProfileFilter] = useState('')
@@ -171,6 +180,7 @@ export function HistoryPage() {
   }
 
   const completedCount = jobs?.filter(j => j.status === 'completed').length || 0
+  const warningCount = jobs?.filter(j => j.status === 'warning').length || 0
   const failedCount = jobs?.filter(j => j.status === 'failed').length || 0
 
   if (isLoading) {
@@ -200,7 +210,7 @@ export function HistoryPage() {
       <div className="flex justify-between items-start mb-4">
         <div>
           <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">Jobs History</h1>
-          <p className="text-gray-600 dark:text-gray-400">Completed and failed jobs.</p>
+          <p className="text-gray-600 dark:text-gray-400">Completed, warning, and failed jobs.</p>
         </div>
         <div className="flex gap-2">
           {completedCount > 0 && (
@@ -210,6 +220,15 @@ export function HistoryPage() {
               className="px-3 py-1.5 text-sm bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-900 dark:text-gray-100 rounded transition-colors disabled:opacity-50"
             >
               Clear Completed ({completedCount})
+            </button>
+          )}
+          {warningCount > 0 && (
+            <button
+              onClick={() => clearWarningMutation.mutate()}
+              disabled={clearWarningMutation.isPending}
+              className="px-3 py-1.5 text-sm bg-amber-100 dark:bg-amber-900/50 hover:bg-amber-200 dark:hover:bg-amber-900/70 text-amber-700 dark:text-amber-300 rounded transition-colors disabled:opacity-50"
+            >
+              Clear Warning ({warningCount})
             </button>
           )}
           {failedCount > 0 && (

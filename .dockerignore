@@ -1,0 +1,13 @@
+.git
+.gitignore
+logs
+tests
+docs
+examples
+local-docs
+node_modules
+__pycache__
+*.db
+*.sqlite
+.env
+.vscode

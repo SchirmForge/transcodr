@@ -121,8 +121,10 @@ Examples:
     root_media_expanded = expand_path(config.storage.root_media)
     temp_dir_expanded = expand_path(config.storage.temp_dir)
 
+    from src import __version__
+
     print("=" * 70)
-    print("TRANSCODR DAEMON")
+    print(f"TRANSCODR DAEMON v{__version__}")
     print("=" * 70)
     print()
     print("SERVER:")
@@ -142,6 +144,7 @@ Examples:
     print(f"  Backup directory:  {config.storage.backup_dir}")
     print(f"  Backup originals:  {config.storage.backup_originals}")
     print(f"  Min free space:    {config.storage.min_free_space_gb} GB")
+    print(f"  Ext mismatch:      {config.storage.on_extension_mismatch.value}")
     print()
     print("ENCODING:")
     print(f"  Max concurrent:    {config.daemon.max_concurrent_jobs}")

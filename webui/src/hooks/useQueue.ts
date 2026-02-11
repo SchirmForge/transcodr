@@ -63,3 +63,19 @@ export function useClearFailed() {
     },
   })
 }
+
+// Clear warning jobs (completed with warnings)
+export function useClearWarning() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: async (): Promise<ActionResponse> => {
+      const { data } = await apiClient.delete<ActionResponse>('/queue/warning')
+      return data
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['jobs'] })
+      queryClient.invalidateQueries({ queryKey: ['status'] })
+    },
+  })
+}

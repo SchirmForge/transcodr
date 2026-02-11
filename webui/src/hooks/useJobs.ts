@@ -21,16 +21,17 @@ export function useActiveJobs() {
   })
 }
 
-// Fetch history jobs (completed, failed)
+// Fetch history jobs (completed, warning, failed)
 export function useHistoryJobs() {
   return useQuery({
     queryKey: ['jobs', 'history'],
     queryFn: async (): Promise<JobInfo[]> => {
-      const [completed, failed] = await Promise.all([
+      const [completed, warning, failed] = await Promise.all([
         apiClient.get<JobListResponse>('/jobs', { params: { status: 'completed' } }),
+        apiClient.get<JobListResponse>('/jobs', { params: { status: 'warning' } }),
         apiClient.get<JobListResponse>('/jobs', { params: { status: 'failed' } }),
       ])
-      return [...failed.data.jobs, ...completed.data.jobs]
+      return [...failed.data.jobs, ...warning.data.jobs, ...completed.data.jobs]
     },
   })
 }

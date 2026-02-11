@@ -14,6 +14,7 @@ class JobStatus(str, Enum):
     QUEUED = "queued"
     RUNNING = "running"
     COMPLETED = "completed"
+    WARNING = "warning"  # Completed with warnings
     FAILED = "failed"
     CANCELLED = "cancelled"
     INTERRUPTED = "interrupted"  # Graceful shutdown while running
@@ -474,6 +475,7 @@ class JobInfo(BaseModel):
 
     # Error info
     error_message: Optional[str] = Field(default=None, description="Error message if failed")
+    warning_message: Optional[str] = Field(default=None, description="Warning message(s) if completed with warnings")
 
     # Encoding settings (populated from profile when returning job info)
     hardware_accel: Optional[str] = Field(default=None, description="Hardware acceleration used")

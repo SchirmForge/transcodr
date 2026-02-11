@@ -47,6 +47,7 @@ class JobQueue:
         profile_name_separator: str = "_",
         root_media: Optional[Path] = None,
         min_free_space_gb: int = 10,
+        on_extension_mismatch: str = "rename",
     ):
         """
         Initialize job queue.
@@ -59,6 +60,7 @@ class JobQueue:
             profile_name_separator: Separator between filename and profile name
             root_media: Base path for $root_media placeholder expansion
             min_free_space_gb: Minimum free space safety margin in GB
+            on_extension_mismatch: Policy for extension mismatch in replace mode (rename/reject/keep)
         """
         self.max_concurrent = max_concurrent
         self.db_path = db_path or Path(":memory:")
@@ -78,6 +80,7 @@ class JobQueue:
             temp_dir=temp_dir,
             duration_tolerance_seconds=duration_tolerance_seconds,
             min_free_space_gb=min_free_space_gb,
+            on_extension_mismatch=on_extension_mismatch,
         )
 
         # Folder processors for folder sources (continuous monitoring)
@@ -180,7 +183,7 @@ class JobQueue:
         )
         self._conn.row_factory = sqlite3.Row
 
-        # Create jobs table
+        # Create jobs table (consolidated schema — no migrations needed, no public release yet)
         self._conn.execute("""
             CREATE TABLE IF NOT EXISTS jobs (
                 id TEXT PRIMARY KEY,
@@ -201,57 +204,19 @@ class JobQueue:
                 source_size_bytes INTEGER DEFAULT 0,
                 output_size_bytes INTEGER DEFAULT 0,
                 error_message TEXT,
+                warning_message TEXT,
                 priority INTEGER DEFAULT 5,
                 hardware_accel TEXT,
                 backup BOOLEAN DEFAULT 1,
                 backup_dir TEXT DEFAULT '.originals',
                 output_mode TEXT DEFAULT 'replace',
                 delete_source BOOLEAN DEFAULT 0,
-                source_id TEXT
+                watchfolder_context TEXT,
+                source_id TEXT,
+                use_temp_folder BOOLEAN DEFAULT 1,
+                copy_source_to_temp BOOLEAN DEFAULT 1
             )
         """)
-
-        # Migration: add output_mode column if it doesn't exist (for existing databases)
-        try:
-            self._conn.execute("SELECT output_mode FROM jobs LIMIT 1")
-        except sqlite3.OperationalError:
-            logger.info("Migrating database: adding output_mode column")
-            self._conn.execute("ALTER TABLE jobs ADD COLUMN output_mode TEXT DEFAULT 'replace'")
-
-        # Migration: add delete_source column if it doesn't exist
-        try:
-            self._conn.execute("SELECT delete_source FROM jobs LIMIT 1")
-        except sqlite3.OperationalError:
-            logger.info("Migrating database: adding delete_source column")
-            self._conn.execute("ALTER TABLE jobs ADD COLUMN delete_source BOOLEAN DEFAULT 0")
-
-        # Migration: add watchfolder_context column if it doesn't exist
-        try:
-            self._conn.execute("SELECT watchfolder_context FROM jobs LIMIT 1")
-        except sqlite3.OperationalError:
-            logger.info("Migrating database: adding watchfolder_context column")
-            self._conn.execute("ALTER TABLE jobs ADD COLUMN watchfolder_context TEXT")
-
-        # Migration: add source_id column if it doesn't exist (for per-source concurrency)
-        try:
-            self._conn.execute("SELECT source_id FROM jobs LIMIT 1")
-        except sqlite3.OperationalError:
-            logger.info("Migrating database: adding source_id column")
-            self._conn.execute("ALTER TABLE jobs ADD COLUMN source_id TEXT")
-
-        # Migration: add use_temp_folder column if it doesn't exist
-        try:
-            self._conn.execute("SELECT use_temp_folder FROM jobs LIMIT 1")
-        except sqlite3.OperationalError:
-            logger.info("Migrating database: adding use_temp_folder column")
-            self._conn.execute("ALTER TABLE jobs ADD COLUMN use_temp_folder BOOLEAN DEFAULT 1")
-
-        # Migration: add copy_source_to_temp column if it doesn't exist
-        try:
-            self._conn.execute("SELECT copy_source_to_temp FROM jobs LIMIT 1")
-        except sqlite3.OperationalError:
-            logger.info("Migrating database: adding copy_source_to_temp column")
-            self._conn.execute("ALTER TABLE jobs ADD COLUMN copy_source_to_temp BOOLEAN DEFAULT 1")
 
         # Create index for efficient queries
         self._conn.execute("""
@@ -756,7 +721,8 @@ class JobQueue:
                 """, (status.value, job_id))
 
     async def _update_job_completed(self, job_id: str, job: Job):
-        """Update job as completed."""
+        """Update job as completed (or warning if warnings present)."""
+        status = JobStatus.WARNING if job.warning_message else JobStatus.COMPLETED
         async with self._lock:
             self._conn.execute("""
                 UPDATE jobs SET
@@ -765,17 +731,22 @@ class JobQueue:
                     progress = 100.0,
                     output_size_bytes = ?,
                     output_path = ?,
-                    hardware_accel = ?
+                    hardware_accel = ?,
+                    warning_message = ?
                 WHERE id = ?
             """, (
-                JobStatus.COMPLETED.value,
+                status.value,
                 datetime.now().isoformat(),
                 job.output_size_bytes,
                 str(job.output_path) if job.output_path else None,
                 job.hardware_accel,
+                job.warning_message,
                 job_id,
             ))
-            logger.info(f"Job completed: {job_id}")
+            if job.warning_message:
+                logger.warning(f"Job completed with warnings: {job_id}")
+            else:
+                logger.info(f"Job completed: {job_id}")
 
         # Notify folder processor if job belongs to a folder
         self._notify_folder_job_complete(job_id, success=True)
@@ -955,6 +926,15 @@ class JobQueue:
             )
             return cursor.rowcount
 
+    async def clear_warning(self) -> int:
+        """Clear warning jobs (completed with warnings)."""
+        async with self._lock:
+            cursor = self._conn.execute(
+                "DELETE FROM jobs WHERE status = ?",
+                (JobStatus.WARNING.value,)
+            )
+            return cursor.rowcount
+
     async def purge_all(self, force: bool = False) -> int:
         """
         Purge all jobs from the database.
@@ -1040,6 +1020,7 @@ class JobQueue:
             source_size_bytes=row["source_size_bytes"] or 0,
             output_size_bytes=row["output_size_bytes"] or 0,
             error_message=row["error_message"],
+            warning_message=row["warning_message"],
             # Encoding settings
             hardware_accel=row["hardware_accel"],
             video_codec=video_codec,

@@ -4,7 +4,7 @@
 
 # Transcodr
 
-Transcodr is a local‑first video transcoding platform for creators and small studios. It runs a reliable daemon with a REST API and a fast Web UI, so you can batch encode, automate with watchfolders, and keep full control of your media—without recurring SaaS costs.
+Transcodr is a local‑first video transcoding platform for creators and small studios. It runs a reliable daemon with a REST API and a fast Web UI, so you can batch encode, automate with watchfolders, and keep full control of your media.
 
 ## Why Transcodr
 
@@ -15,8 +15,8 @@ Transcodr is a local‑first video transcoding platform for creators and small s
 
 ## Key Features
 
-- Daemon + REST API core
-- Web UI powered by the API
+- Web UI
+- Daemon + REST API core (it powers the web UI and is directly accessible)
 - Profile‑driven encoding (single or multi‑profile)
 - Hardware acceleration: VAAPI (AMD/Intel), NVENC, QSV
 - Watchfolders for automated ingest
@@ -26,8 +26,8 @@ Transcodr is a local‑first video transcoding platform for creators and small s
 
 ## Get Started
 
-- Quick install: docs/configuration.md#prerequisites
-- Full install and configuration: docs/configuration.md
+- Quick install: See **[prerequisites](docs/configuration.md#prerequisites)**
+- Full install and configuration: See **[configuration](docs/configuration.md)**
 
 ## Documentation
 

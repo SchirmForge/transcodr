@@ -40,7 +40,7 @@ _job_queue: Optional[JobQueue] = None
 _watchfolder_service: Optional[WatchfolderService] = None
 _config = None
 
-VERSION = "0.3.3"
+VERSION = "0.3.4"
 
 
 @asynccontextmanager
@@ -76,6 +76,7 @@ async def lifespan(app: FastAPI):
         profile_name_separator=_config.storage.profile_name_separator,
         root_media=_config.storage.root_media,
         min_free_space_gb=_config.storage.min_free_space_gb,
+        on_extension_mismatch=_config.storage.on_extension_mismatch.value,
     )
     await _job_queue.start()
     logger.info(f"Job queue started (max concurrent: {_config.daemon.max_concurrent_jobs}, temp: {_config.storage.temp_dir})")
@@ -405,6 +406,18 @@ async def clear_failed_jobs():
     return {"success": True, "message": f"Cleared {count} failed jobs"}
 
 
+@api_router.delete("/queue/warning", tags=["Queue"])
+async def clear_warning_jobs():
+    """Clear all warning jobs (completed with warnings) from the queue."""
+    global _job_queue
+
+    if not _job_queue:
+        raise HTTPException(status_code=500, detail="Job queue not initialized")
+
+    count = await _job_queue.clear_warning()
+    return {"success": True, "message": f"Cleared {count} warning jobs"}
+
+
 # =============================================================================
 # Admin Endpoints
 # =============================================================================
@@ -472,6 +485,7 @@ async def reload_config():
                     "backup_dir": _config.storage.backup_dir,
                     "backup_originals": _config.storage.backup_originals,
                     "min_free_space_gb": _config.storage.min_free_space_gb,
+                    "on_extension_mismatch": _config.storage.on_extension_mismatch.value,
                 },
                 "ffmpeg": {
                     "hardware_accel": _config.ffmpeg.hardware_accel,

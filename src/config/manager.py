@@ -226,6 +226,7 @@ storage:
   backup_dir: ./.originals         # Backup directory (relative or absolute)
   min_free_space_gb: 10            # Minimum free space required (GB)
   root_media: ~/Videos             # Base path for $root_media placeholder (supports ~ and $USER)
+  on_extension_mismatch: rename    # rename (use correct ext), reject (fail job), keep (keep source ext)
 
 # Logging settings
 logging:

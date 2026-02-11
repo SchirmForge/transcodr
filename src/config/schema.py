@@ -1,8 +1,16 @@
 """Configuration schema using Pydantic."""
 
+from enum import Enum
 from pathlib import Path
 from typing import Optional
 from pydantic import BaseModel, Field, field_validator
+
+
+class ExtensionMismatchPolicy(str, Enum):
+    """Policy for handling extension mismatch in replace mode."""
+    RENAME = "rename"   # Use correct extension, delete original
+    REJECT = "reject"   # Fail the job
+    KEEP = "keep"       # Keep source extension (wrong ext)
 
 
 class FFmpegConfig(BaseModel):
@@ -75,6 +83,10 @@ class StorageConfig(BaseModel):
     profile_name_separator: str = Field(
         default="_",
         description="Separator between filename and profile name (for append_profile_name)",
+    )
+    on_extension_mismatch: ExtensionMismatchPolicy = Field(
+        default=ExtensionMismatchPolicy.RENAME,
+        description="What to do when source extension differs from profile container: rename (default), reject, or keep",
     )
 
 

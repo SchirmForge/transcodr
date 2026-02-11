@@ -1,8 +1,17 @@
 # Python
 __pycache__/
-*.pyc
-*.pyo
-*.pyd
+*.py[cod]
+*.so
+*.egg-info/
+build/
+dist/
+.wheels/
+*.whl
+
+# Virtual environments
+.venv/
+venv/
+env/
 
 # Conda
 .env
@@ -11,22 +20,56 @@ __pycache__/
 .conda/
 conda-meta/
 
-# VS Code
+# Node / WebUI
+node_modules/
+webui/node_modules/
+npm-debug.log*
+yarn-error.log*
+.next/
+dist-web/
+
+# IDE
 .vscode/*
 !.vscode/launch.json
+.idea/
 
-# Logs / runtime
+# Logs / Runtime
 logs/
 *.log
 *.sqlite
 *.db
 
-# Temp stuff
-tmp
+# Local stuff
+config/
+.env.local
+tmp/
+temp/
 *.part
+tests/media/
 
-# test video/audio files
-tests/media
+# media files just in case
+*.mpa
+*.mp4
+*.avi
+*.mkv
+*.mp3
+*.wav
+*.flac
+*.m2ts
+*.mov
+*.m4v
+*.mpeg
+*.mpg
+*.ogg
+*.opus
+*.flv
+*.m4a
+*.aac
 
-# local config
-config
+# OS junk
+.DS_Store
+Thumbs.db
+
+# Docker
+.docker/
+docker-data/

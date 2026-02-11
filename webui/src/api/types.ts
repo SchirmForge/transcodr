@@ -1,5 +1,5 @@
 // Job status enum matching backend
-export type JobStatus = 'pending' | 'queued' | 'running' | 'completed' | 'failed' | 'cancelled' | 'interrupted'
+export type JobStatus = 'pending' | 'queued' | 'running' | 'completed' | 'warning' | 'failed' | 'cancelled' | 'interrupted'
 
 // Output mode enum
 export type OutputMode = 'replace' | 'destination'
@@ -32,8 +32,9 @@ export interface JobInfo {
   source_size_bytes: number
   output_size_bytes: number
 
-  // Error
+  // Error / Warning
   error_message: string | null
+  warning_message: string | null
 
   // Encoding settings (populated from profile)
   hardware_accel: string | null

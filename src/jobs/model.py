@@ -64,6 +64,9 @@ class Job(BaseModel):
     error_message: Optional[str] = None
     retry_count: int = 0
 
+    # Warning tracking
+    warning_message: Optional[str] = None
+
     # Metadata
     source_size_bytes: int = 0
     output_size_bytes: int = 0
@@ -102,6 +105,13 @@ class Job(BaseModel):
         self.state = JobState.COMPLETED
         self.progress_percent = 100.0
         self.completed_at = datetime.now()
+
+    def add_warning(self, message: str):
+        """Append a warning message to the job."""
+        if self.warning_message:
+            self.warning_message += "\n" + message
+        else:
+            self.warning_message = message
 
     def __repr__(self):
         return (

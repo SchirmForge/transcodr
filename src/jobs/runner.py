@@ -43,6 +43,7 @@ class JobRunner:
         backup_originals: bool = True,
         duration_tolerance_seconds: float = 10.0,
         min_free_space_gb: int = 10,
+        on_extension_mismatch: str = "rename",
     ):
         """
         Initialize job runner.
@@ -53,7 +54,9 @@ class JobRunner:
             temp_dir: Temporary directory for encoding (default: system temp)
             backup_originals: Create backups of original files
             min_free_space_gb: Minimum free space safety margin in GB
+            on_extension_mismatch: Policy for extension mismatch in replace mode (rename/reject/keep)
         """
+        self.on_extension_mismatch = on_extension_mismatch
         self.ffmpeg = ffmpeg or FFmpegWrapper()
         self.profile_manager = profile_manager or ProfileManager()
         self.probe = ProbeHelper()
@@ -538,12 +541,99 @@ class JobRunner:
         logger.debug("Output validation passed")
 
     def _replace_file(self, job: Job):
-        """Replace original file with encoded version."""
-        logger.debug("Replacing original file")
+        """Replace original file with encoded version, handling extension mismatch."""
+        source_ext = job.source_path.suffix.lower()
+        encoded_ext = job.temp_path.suffix.lower()
 
-        self.replacer.replace(job.source_path, job.temp_path)
+        if source_ext == encoded_ext:
+            # Extensions match — standard replacement
+            logger.debug("Replacing original file (extensions match)")
+            self.replacer.replace(job.source_path, job.temp_path)
+            logger.debug("File replacement completed")
+            return
 
-        logger.debug("File replacement completed")
+        # Extension mismatch detected
+        logger.info(
+            f"Extension mismatch: source={source_ext}, encoded={encoded_ext} "
+            f"(policy: {self.on_extension_mismatch})"
+        )
+
+        if self.on_extension_mismatch == "reject":
+            raise ReplacementError(
+                f"Extension mismatch: source is '{source_ext}' but profile produces '{encoded_ext}'. "
+                f"Set on_extension_mismatch to 'rename' (use correct extension) or 'keep' "
+                f"(keep source extension) in config.yaml to allow this."
+            )
+        elif self.on_extension_mismatch == "keep":
+            # Replace keeping the source extension (file content won't match extension)
+            self.replacer.replace(job.source_path, job.temp_path)
+            job.add_warning(
+                f"Extension mismatch: file kept as '{source_ext}' but contains "
+                f"'{encoded_ext}' content (on_extension_mismatch=keep)"
+            )
+            logger.warning(f"Replaced with mismatched extension: {job.source_path}")
+        else:
+            # "rename" (default): use correct extension, delete original
+            self._replace_with_new_extension(job, encoded_ext)
+            job.add_warning(
+                f"Extension mismatch: source was '{source_ext}', "
+                f"renamed to '{encoded_ext}' (on_extension_mismatch=rename)"
+            )
+
+    def _replace_with_new_extension(self, job: Job, new_ext: str):
+        """
+        Replace original file with encoded version using the correct extension.
+
+        Creates a new file with the proper extension, backs up the original if
+        configured, then removes both the original and temp file.
+
+        Args:
+            job: Job being processed
+            new_ext: New file extension (e.g. ".mkv")
+        """
+        source = job.source_path
+        encoded = job.temp_path
+        new_path = source.with_suffix(new_ext)
+
+        # Validate encoded file
+        if not self.probe.validate_file(encoded):
+            raise ReplacementError(f"Encoded file is corrupt: {encoded}")
+
+        # Backup original if configured
+        if self.replacer.backup_originals:
+            backup_path = self.replacer._get_backup_path(source)
+            backup_path.parent.mkdir(parents=True, exist_ok=True)
+            try:
+                shutil.copy2(source, backup_path)
+                logger.info(f"Backup created: {backup_path}")
+            except Exception as e:
+                raise ReplacementError(f"Failed to create backup: {e}")
+
+        # Copy encoded file to new location (with correct extension)
+        try:
+            shutil.copy2(encoded, new_path)
+            logger.info(f"Created output with correct extension: {new_path}")
+        except Exception as e:
+            raise ReplacementError(f"Failed to copy encoded file to {new_path}: {e}")
+
+        # Delete original (different extension, so it's a separate file)
+        try:
+            source.unlink()
+            logger.info(f"Deleted original: {source}")
+        except Exception as e:
+            logger.warning(f"Failed to delete original after rename: {e}")
+
+        # Clean up temp file
+        try:
+            if encoded.exists():
+                encoded.unlink()
+                logger.debug(f"Cleaned up temp file: {encoded}")
+        except Exception as e:
+            logger.warning(f"Failed to cleanup temp file: {e}")
+
+        # Update job output path to reflect the new extension
+        job.output_path = new_path
+        logger.info(f"File replacement completed (renamed {source.suffix} → {new_ext})")
 
     def _copy_to_output(self, job: Job):
         """Copy encoded file to output path (for additional profiles)."""
