@@ -1,5 +1,5 @@
-import { useProfiles } from '../hooks/useProfiles'
-import type { ProfileInfo } from '../api/types'
+import { useProfiles } from '../../hooks/useProfiles'
+import type { ProfileInfo } from '../../api/types'
 
 function ProfileCard({ profile }: { profile: ProfileInfo }) {
   return (

@@ -6,11 +6,14 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
-from fastapi import FastAPI, HTTPException, Query, BackgroundTasks, Request
+from fastapi import APIRouter, FastAPI, HTTPException, Query, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from .models import (
+    BrowseEntry,
+    BrowseResponse,
     DaemonStatus,
     EncodingRequest,
     JobInfo,
@@ -25,7 +28,7 @@ from .models import (
 )
 from .queue import JobQueue
 from ..watcher import WatchfolderService
-from ..config.manager import ConfigManager
+from ..config.manager import ConfigManager, expand_path
 from ..core.hardware import HardwareCapabilities
 from ..profiles.manager import ProfileManager
 
@@ -72,6 +75,7 @@ async def lifespan(app: FastAPI):
         duration_tolerance_seconds=_config.validation.duration_tolerance,
         profile_name_separator=_config.storage.profile_name_separator,
         root_media=_config.storage.root_media,
+        min_free_space_gb=_config.storage.min_free_space_gb,
     )
     await _job_queue.start()
     logger.info(f"Job queue started (max concurrent: {_config.daemon.max_concurrent_jobs}, temp: {_config.storage.temp_dir})")
@@ -110,20 +114,15 @@ app.add_middleware(
 )
 
 
-# Middleware to strip /api prefix so web UI API calls (/api/jobs -> /jobs) work
-@app.middleware("http")
-async def strip_api_prefix(request: Request, call_next):
-    path = request.scope["path"]
-    if path.startswith("/api/") or path == "/api":
-        request.scope["path"] = path[4:] or "/"
-    return await call_next(request)
+# API Router - all API endpoints live under /api prefix
+api_router = APIRouter()
 
 
 # =============================================================================
 # Status Endpoints
 # =============================================================================
 
-@app.get("/status", response_model=DaemonStatus, tags=["Status"])
+@api_router.get("/status", response_model=DaemonStatus, tags=["Status"])
 async def get_status():
     """Get daemon status including queue info and hardware capabilities."""
     global _start_time, _job_queue, _config
@@ -156,7 +155,7 @@ async def get_status():
     )
 
 
-@app.get("/health", tags=["Status"])
+@api_router.get("/health", tags=["Status"])
 async def health_check():
     """Health check endpoint."""
     return {"status": "healthy"}
@@ -166,7 +165,7 @@ async def health_check():
 # Job Endpoints
 # =============================================================================
 
-@app.post("/jobs", response_model=SubmitJobResponse, tags=["Jobs"])
+@api_router.post("/jobs", response_model=SubmitJobResponse, tags=["Jobs"])
 async def submit_job(request: SubmitJobRequest):
     """
     Submit a new encoding job.
@@ -197,7 +196,7 @@ async def submit_job(request: SubmitJobRequest):
     )
 
 
-@app.get("/jobs", response_model=JobListResponse, tags=["Jobs"])
+@api_router.get("/jobs", response_model=JobListResponse, tags=["Jobs"])
 async def list_jobs(
     status: Optional[JobStatus] = Query(None, description="Filter by status"),
     limit: int = Query(100, ge=1, le=1000, description="Maximum jobs to return"),
@@ -215,7 +214,7 @@ async def list_jobs(
     return JobListResponse(jobs=jobs, total=total)
 
 
-@app.get("/jobs/{job_id}", response_model=JobInfo, tags=["Jobs"])
+@api_router.get("/jobs/{job_id}", response_model=JobInfo, tags=["Jobs"])
 async def get_job(job_id: str):
     """Get job details by ID."""
     global _job_queue
@@ -230,7 +229,7 @@ async def get_job(job_id: str):
     return job
 
 
-@app.delete("/jobs/{job_id}", response_model=CancelJobResponse, tags=["Jobs"])
+@api_router.delete("/jobs/{job_id}", response_model=CancelJobResponse, tags=["Jobs"])
 async def cancel_job(job_id: str):
     """Cancel a pending or running job."""
     global _job_queue
@@ -245,7 +244,7 @@ async def cancel_job(job_id: str):
     return CancelJobResponse(success=True, message=f"Job cancelled: {job_id}")
 
 
-@app.post("/jobs/{job_id}/retry", response_model=JobInfo, tags=["Jobs"])
+@api_router.post("/jobs/{job_id}/retry", response_model=JobInfo, tags=["Jobs"])
 async def retry_job(job_id: str):
     """Retry a failed job."""
     global _job_queue
@@ -264,7 +263,7 @@ async def retry_job(job_id: str):
 # Watch Folder Endpoints
 # =============================================================================
 
-@app.get("/watchfolders", tags=["Watchfolders"])
+@api_router.get("/watchfolders", tags=["Watchfolders"])
 async def list_watchfolders():
     """
     List all config-based watchfolders.
@@ -294,7 +293,7 @@ async def list_watchfolders():
     return result
 
 
-@app.get("/watchfolders/{folder_id}", tags=["Watchfolders"])
+@api_router.get("/watchfolders/{folder_id}", tags=["Watchfolders"])
 async def get_watchfolder(folder_id: str):
     """Get watchfolder details by ID."""
     global _watchfolder_service
@@ -308,7 +307,7 @@ async def get_watchfolder(folder_id: str):
     raise HTTPException(status_code=404, detail=f"Watchfolder not found: {folder_id}")
 
 
-@app.delete("/watchfolders/{folder_id}", tags=["Watchfolders"])
+@api_router.delete("/watchfolders/{folder_id}", tags=["Watchfolders"])
 async def remove_watchfolder(folder_id: str):
     """
     Remove a watchfolder.
@@ -328,7 +327,7 @@ async def remove_watchfolder(folder_id: str):
     raise HTTPException(status_code=404, detail=f"Watchfolder not found: {folder_id}")
 
 
-@app.post("/watchfolders/{folder_id}/pause", tags=["Watchfolders"])
+@api_router.post("/watchfolders/{folder_id}/pause", tags=["Watchfolders"])
 async def pause_watchfolder(folder_id: str):
     """Pause a watchfolder."""
     global _watchfolder_service
@@ -341,7 +340,7 @@ async def pause_watchfolder(folder_id: str):
     raise HTTPException(status_code=404, detail=f"Watchfolder not found: {folder_id}")
 
 
-@app.post("/watchfolders/{folder_id}/resume", tags=["Watchfolders"])
+@api_router.post("/watchfolders/{folder_id}/resume", tags=["Watchfolders"])
 async def resume_watchfolder(folder_id: str):
     """Resume a paused watchfolder."""
     global _watchfolder_service
@@ -358,7 +357,7 @@ async def resume_watchfolder(folder_id: str):
 # Queue Control Endpoints
 # =============================================================================
 
-@app.post("/queue/pause", tags=["Queue"])
+@api_router.post("/queue/pause", tags=["Queue"])
 async def pause_queue():
     """Pause the job queue (no new jobs will start)."""
     global _job_queue
@@ -370,7 +369,7 @@ async def pause_queue():
     return {"success": True, "message": "Queue paused"}
 
 
-@app.post("/queue/resume", tags=["Queue"])
+@api_router.post("/queue/resume", tags=["Queue"])
 async def resume_queue():
     """Resume the job queue."""
     global _job_queue
@@ -382,7 +381,7 @@ async def resume_queue():
     return {"success": True, "message": "Queue resumed"}
 
 
-@app.delete("/queue/completed", tags=["Queue"])
+@api_router.delete("/queue/completed", tags=["Queue"])
 async def clear_completed_jobs():
     """Clear all completed jobs from the queue."""
     global _job_queue
@@ -394,7 +393,7 @@ async def clear_completed_jobs():
     return {"success": True, "message": f"Cleared {count} completed jobs"}
 
 
-@app.delete("/queue/failed", tags=["Queue"])
+@api_router.delete("/queue/failed", tags=["Queue"])
 async def clear_failed_jobs():
     """Clear all failed jobs from the queue."""
     global _job_queue
@@ -410,7 +409,7 @@ async def clear_failed_jobs():
 # Admin Endpoints
 # =============================================================================
 
-@app.post("/reload", tags=["Admin"])
+@api_router.post("/reload", tags=["Admin"])
 async def reload_config():
     """
     Reload configuration and watchfolders without restarting the daemon.
@@ -487,7 +486,7 @@ async def reload_config():
         raise HTTPException(status_code=500, detail=f"Failed to reload configuration: {e}")
 
 
-@app.post("/purge", tags=["Admin"])
+@api_router.post("/purge", tags=["Admin"])
 async def purge_database(
     force: bool = Query(False, description="Force purge even if jobs are in progress"),
     confirm: bool = Query(False, description="Confirm the purge operation"),
@@ -533,7 +532,7 @@ async def purge_database(
 # Profile Endpoints
 # =============================================================================
 
-@app.get("/profiles", tags=["Profiles"])
+@api_router.get("/profiles", tags=["Profiles"])
 async def list_profiles():
     """List all available encoding profiles."""
     pm = ProfileManager()
@@ -550,7 +549,7 @@ async def list_profiles():
     return {"profiles": result, "total": len(result)}
 
 
-@app.get("/profiles/{name}", tags=["Profiles"])
+@api_router.get("/profiles/{name}", tags=["Profiles"])
 async def get_profile(name: str):
     """Get profile details."""
     pm = ProfileManager()
@@ -563,7 +562,7 @@ async def get_profile(name: str):
     return info
 
 
-@app.delete("/profiles/{name}", tags=["Profiles"])
+@api_router.delete("/profiles/{name}", tags=["Profiles"])
 async def delete_profile(
     name: str,
     confirm: bool = Query(False, description="Confirm the delete operation"),
@@ -594,9 +593,110 @@ async def delete_profile(
 
 
 # =============================================================================
-# Web UI Static Files (must be after all route definitions)
+# File Browser Endpoint
+# =============================================================================
+
+_VIDEO_EXTENSIONS = {".mkv", ".mp4", ".avi", ".mov", ".wmv", ".flv", ".webm", ".m2ts", ".ts", ".mts"}
+_BLOCKED_PATHS = {"/proc", "/sys", "/dev", "/etc", "/boot", "/root"}
+
+@api_router.get("/browse", response_model=BrowseResponse, tags=["Browse"])
+async def browse_filesystem(
+    path: Optional[str] = Query(None, description="Directory path to browse"),
+):
+    """
+    Browse the filesystem for video files and directories.
+
+    Defaults to root_media from config. Returns directories and video files only.
+    """
+    global _config
+
+    root_media = str(expand_path(_config.storage.root_media))
+
+    # Default to root_media
+    browse_path = Path(path if path else root_media).resolve()
+
+    # Security: block sensitive paths
+    browse_str = str(browse_path)
+    for blocked in _BLOCKED_PATHS:
+        if browse_str == blocked or browse_str.startswith(blocked + "/"):
+            raise HTTPException(status_code=403, detail=f"Access denied: {browse_str}")
+
+    if not browse_path.exists():
+        raise HTTPException(status_code=404, detail=f"Path not found: {browse_str}")
+
+    if not browse_path.is_dir():
+        raise HTTPException(status_code=400, detail=f"Not a directory: {browse_str}")
+
+    # Build parent path
+    parent_path = str(browse_path.parent) if browse_path != browse_path.parent else None
+
+    # Scan directory
+    dirs: list[BrowseEntry] = []
+    files: list[BrowseEntry] = []
+
+    try:
+        import os
+        with os.scandir(browse_path) as scanner:
+            count = 0
+            for entry in scanner:
+                if count >= 1000:
+                    break
+                try:
+                    if entry.name.startswith("."):
+                        continue
+                    if entry.is_dir(follow_symlinks=False):
+                        dirs.append(BrowseEntry(
+                            name=entry.name,
+                            type="directory",
+                            path=str(Path(entry.path).resolve()),
+                        ))
+                        count += 1
+                    elif entry.is_file(follow_symlinks=False):
+                        ext = Path(entry.name).suffix.lower()
+                        if ext in _VIDEO_EXTENSIONS:
+                            files.append(BrowseEntry(
+                                name=entry.name,
+                                type="file",
+                                path=str(Path(entry.path).resolve()),
+                                size=entry.stat().st_size,
+                            ))
+                            count += 1
+                except PermissionError:
+                    continue
+    except PermissionError:
+        raise HTTPException(status_code=403, detail=f"Permission denied: {browse_str}")
+
+    # Sort: directories first (alpha), then files (alpha)
+    dirs.sort(key=lambda e: e.name.lower())
+    files.sort(key=lambda e: e.name.lower())
+
+    return BrowseResponse(
+        current_path=browse_str,
+        parent_path=parent_path,
+        root_media=root_media,
+        entries=dirs + files,
+    )
+
+
+# Include API router with /api prefix
+app.include_router(api_router, prefix="/api")
+
+
+# =============================================================================
+# Web UI SPA (must be after all route definitions)
 # =============================================================================
 
 _webui_dir = Path(__file__).parent.parent.parent / "webui" / "dist"
 if _webui_dir.is_dir():
-    app.mount("/", StaticFiles(directory=str(_webui_dir), html=True), name="webui")
+    _webui_assets = _webui_dir / "assets"
+    if _webui_assets.is_dir():
+        app.mount("/assets", StaticFiles(directory=str(_webui_assets)), name="webui-assets")
+
+    @app.get("/{full_path:path}")
+    async def serve_spa(full_path: str):
+        """Serve index.html for SPA client-side routing."""
+        if full_path:
+            file_path = (_webui_dir / full_path).resolve()
+            if file_path.is_relative_to(_webui_dir.resolve()) and file_path.is_file():
+                return FileResponse(file_path)
+        return FileResponse(_webui_dir / "index.html")

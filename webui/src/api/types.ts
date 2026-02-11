@@ -63,6 +63,9 @@ export interface HardwareInfo {
   vaapi_available?: boolean
   nvenc_available?: boolean
   qsv_available?: boolean
+  vaapi?: boolean
+  nvidia_nvenc?: boolean
+  intel_qsv?: boolean
   [key: string]: unknown
 }
 
@@ -104,7 +107,53 @@ export interface ProfileInfo {
   preset?: string
   crf?: number
   source: 'builtin' | 'user'
+  destination?: string | null
   [key: string]: unknown
+}
+
+// File browser types
+export interface BrowseEntry {
+  name: string
+  type: 'directory' | 'file'
+  path: string
+  size?: number | null
+}
+
+export interface BrowseResponse {
+  current_path: string
+  parent_path: string | null
+  root_media: string
+  entries: BrowseEntry[]
+}
+
+// Job submission types
+export interface EncodingRequest {
+  source: string
+  profiles: string[]
+  output_mode: OutputMode
+  destination?: string
+  use_profile_destination?: boolean
+  preserve_structure?: boolean
+  backup?: boolean
+  backup_dir?: string
+  recursive?: boolean
+  hardware_accel?: string
+  priority?: number
+  create_profile_folders?: boolean
+  append_profile_name?: boolean
+  delete_source?: boolean
+  use_temp_folder?: boolean
+  copy_source_to_temp?: boolean
+}
+
+export interface SubmitJobRequest {
+  request: EncodingRequest
+}
+
+export interface SubmitJobResponse {
+  success: boolean
+  job_ids: string[]
+  message: string
 }
 
 // API Response types

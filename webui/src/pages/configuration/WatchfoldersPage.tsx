@@ -1,7 +1,7 @@
 import { useState, useMemo } from 'react'
-import { useWatchfolders, usePauseWatchfolder, useResumeWatchfolder } from '../hooks/useWatchfolders'
-import type { WatchFolderInfo } from '../api/types'
-import { FilterSelect } from '../components/ui/FilterSelect'
+import { useWatchfolders, usePauseWatchfolder, useResumeWatchfolder } from '../../hooks/useWatchfolders'
+import type { WatchFolderInfo } from '../../api/types'
+import { FilterSelect } from '../../components/ui/FilterSelect'
 
 function WatchfolderCard({
   folder,

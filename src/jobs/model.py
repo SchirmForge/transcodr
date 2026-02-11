@@ -41,6 +41,8 @@ class Job(BaseModel):
     temp_path: Optional[Path] = None  # Temporary output path
     output_mode: OutputMode = Field(default=OutputMode.REPLACE)
     delete_source: bool = Field(default=False)
+    use_temp_folder: bool = Field(default=True)
+    copy_source_to_temp: bool = Field(default=True)
 
     # Profile
     profile_name: str

@@ -2,6 +2,41 @@
 
 @custom-variant dark (&:is(.dark *));
 
+@theme {
+  --color-brand-50: #fff9e6;
+  --color-brand-100: #ffefc3;
+  --color-brand-200: #ffe09a;
+  --color-brand-300: #f6c566;
+  --color-brand-400: #efb33f;
+  --color-brand-500: #d5971d;
+  --color-brand-600: #b67d13;
+  --color-brand-700: #8f620f;
+  --color-brand-800: #6f4c10;
+  --color-brand-900: #573d10;
+
+  --color-graphite-50: #f5f6f7;
+  --color-graphite-100: #e7e9ec;
+  --color-graphite-200: #d2d6dc;
+  --color-graphite-300: #b6bcc4;
+  --color-graphite-400: #9aa2ad;
+  --color-graphite-500: #7f8792;
+  --color-graphite-600: #666d78;
+  --color-graphite-700: #4f5661;
+  --color-graphite-800: #2d323a;
+  --color-graphite-900: #1d2026;
+  --color-graphite-950: #121418;
+
+  --color-steel-50: #f8f9fa;
+  --color-steel-100: #f0f2f4;
+  --color-steel-200: #e2e6ea;
+  --color-steel-300: #c9cfd6;
+  --color-steel-400: #a5adb7;
+  --color-steel-500: #8a919c;
+  --color-steel-600: #727985;
+  --color-steel-700: #5c626c;
+  --color-steel-800: #484e56;
+}
+
 :root {
   font-family: system-ui, Avenir, Helvetica, Arial, sans-serif;
   line-height: 1.5;

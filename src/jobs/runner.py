@@ -42,6 +42,7 @@ class JobRunner:
         temp_dir: Optional[Path] = None,
         backup_originals: bool = True,
         duration_tolerance_seconds: float = 10.0,
+        min_free_space_gb: int = 10,
     ):
         """
         Initialize job runner.
@@ -51,6 +52,7 @@ class JobRunner:
             profile_manager: Profile manager (default: auto-create)
             temp_dir: Temporary directory for encoding (default: system temp)
             backup_originals: Create backups of original files
+            min_free_space_gb: Minimum free space safety margin in GB
         """
         self.ffmpeg = ffmpeg or FFmpegWrapper()
         self.profile_manager = profile_manager or ProfileManager()
@@ -65,6 +67,7 @@ class JobRunner:
         )
 
         self.duration_tolerance_seconds = duration_tolerance_seconds
+        self.min_free_space_gb = min_free_space_gb
 
         self.hardware_caps = HardwareCapabilities()
 
@@ -168,14 +171,17 @@ class JobRunner:
                     total_profiles,
                 )
             elif is_multi_profile and parent_job_id:
-                # Direct API submission with multi-profile: use existing temp copy mechanism
-                temp_source_path = self._get_or_create_temp_source(
-                    parent_job_id,
-                    job.source_path,
-                    total_profiles,
-                )
-                source_for_encoding = temp_source_path
-                logger.info(f"Using temp source copy: {temp_source_path}")
+                # Direct API submission with multi-profile
+                if job.copy_source_to_temp:
+                    temp_source_path = self._get_or_create_temp_source(
+                        parent_job_id,
+                        job.source_path,
+                        total_profiles,
+                    )
+                    source_for_encoding = temp_source_path
+                    logger.info(f"Using temp source copy: {temp_source_path}")
+                else:
+                    logger.info(f"Encoding directly from source (temp copy disabled): {job.source_path}")
 
             # Determine hardware acceleration
             if job.hardware_accel is None:
@@ -278,6 +284,15 @@ class JobRunner:
             logger.info(f"Job completed successfully: {job.id}")
             return job
 
+        except ValidationError as e:
+            # Validation failures are expected conditions (bad source, no space, etc.)
+            # Log as warning without traceback
+            logger.warning(f"Job validation failed: {job.id} - {e}")
+            job.mark_failed(str(e))
+            if progress_callback:
+                progress_callback(job)
+            raise
+
         except Exception as e:
             # Check if this was due to:
             # 1. User cancellation (via cancel_job API)
@@ -371,16 +386,23 @@ class JobRunner:
         except Exception as e:
             logger.warning(f"Failed to get source metadata: {e}")
 
-        # Check disk space (need ~2x source size + 10GB safety margin)
-        source_size = job.source_path.stat().st_size
-        required_space = source_size * 2 + (10 * 1024**3)  # 2x + 10GB
+        # Check disk space in temp directory (if using temp folder)
+        if job.use_temp_folder:
+            source_size = job.source_path.stat().st_size
+            safety_margin = self.min_free_space_gb * 1024**3
+            required_space = source_size + safety_margin  # ~1x source (output estimate) + safety margin
 
-        disk_usage = shutil.disk_usage(self.temp_dir)
-        if disk_usage.free < required_space:
-            raise ValidationError(
-                f"Insufficient disk space: need {required_space / 1024**3:.1f}GB, "
-                f"have {disk_usage.free / 1024**3:.1f}GB"
-            )
+            disk_usage = shutil.disk_usage(self.temp_dir)
+            if disk_usage.free < required_space:
+                source_gb = source_size / 1024**3
+                raise ValidationError(
+                    f"Insufficient space in temp directory ({self.temp_dir}): "
+                    f"estimated {required_space / 1024**3:.1f}GB needed "
+                    f"({source_gb:.1f}GB source + {self.min_free_space_gb}GB safety margin), "
+                    f"only {disk_usage.free / 1024**3:.1f}GB available. "
+                    f"Consider freeing space, changing temp_dir in config, "
+                    f"or disabling temp folder encoding."
+                )
 
         # Check profile exists
         if not self.profile_manager.profile_exists(job.profile_name):
@@ -415,9 +437,16 @@ class JobRunner:
         # Use profile's container format for output extension
         output_ext = f".{container}"
         temp_filename = f"{job.id}_{source_name}_encoded{output_ext}"
-        job.temp_path = self.temp_dir / temp_filename
 
-        logger.debug(f"Temp path: {job.temp_path} (container: {container})")
+        if job.use_temp_folder:
+            job.temp_path = self.temp_dir / temp_filename
+        else:
+            # Write temp file next to the output (or source for replace mode)
+            output_dir = job.output_path.parent if job.output_path else job.source_path.parent
+            output_dir.mkdir(parents=True, exist_ok=True)
+            job.temp_path = output_dir / temp_filename
+
+        logger.debug(f"Temp path: {job.temp_path} (container: {container}, use_temp_folder: {job.use_temp_folder})")
 
     @staticmethod
     def _parse_duration_to_seconds(duration: str) -> Optional[float]:

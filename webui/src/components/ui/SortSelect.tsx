@@ -26,7 +26,7 @@ export function SortSelect({
       <select
         value={value}
         onChange={(e) => onValueChange(e.target.value)}
-        className="text-sm border border-gray-300 dark:border-gray-600 rounded px-2 py-1 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+        className="text-sm border border-gray-300 dark:border-gray-600 rounded px-2 py-1 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-brand-400"
       >
         {options.map((option) => (
           <option key={option.value} value={option.value}>
@@ -36,7 +36,7 @@ export function SortSelect({
       </select>
       <button
         onClick={() => onDirectionChange(direction === 'asc' ? 'desc' : 'asc')}
-        className="px-2 py-1 text-sm border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500"
+        className="px-2 py-1 text-sm border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-brand-400"
         title={direction === 'asc' ? 'Ascending' : 'Descending'}
       >
         {direction === 'asc' ? '↑' : '↓'}

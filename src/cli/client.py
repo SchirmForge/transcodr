@@ -109,7 +109,7 @@ class DaemonClient:
 def get_client() -> DaemonClient:
     """Get daemon client with configured URL."""
     config = ConfigManager.load_config()
-    base_url = f"http://{config.daemon.host}:{config.daemon.port}"
+    base_url = f"http://{config.daemon.host}:{config.daemon.port}/api"
     return DaemonClient(base_url)
 
 

@@ -4,7 +4,7 @@ import os
 from datetime import datetime
 from enum import Enum
 from pathlib import Path
-from typing import Optional, Union
+from typing import Literal, Optional, Union
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 
@@ -187,6 +187,14 @@ class EncodingRequest(BaseModel):
     delete_source: bool = Field(
         default=False,
         description="Delete source file after successful encoding"
+    )
+    use_temp_folder: bool = Field(
+        default=True,
+        description="Encode to temp folder first, then move to output (safer but needs temp space)"
+    )
+    copy_source_to_temp: bool = Field(
+        default=True,
+        description="Copy source file to temp before encoding (for multi-profile jobs on network storage)"
     )
 
     # Concurrency control
@@ -546,3 +554,23 @@ class CancelJobResponse(BaseModel):
     """Response after cancelling a job."""
     success: bool
     message: str
+
+
+# =============================================================================
+# File Browser Models
+# =============================================================================
+
+class BrowseEntry(BaseModel):
+    """A file or directory entry in a browse response."""
+    name: str
+    type: Literal["directory", "file"]
+    path: str
+    size: Optional[int] = None
+
+
+class BrowseResponse(BaseModel):
+    """Response from the file browser endpoint."""
+    current_path: str
+    parent_path: Optional[str]
+    root_media: str
+    entries: list[BrowseEntry]

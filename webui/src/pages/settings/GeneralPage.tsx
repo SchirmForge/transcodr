@@ -26,7 +26,7 @@ export function GeneralPage() {
                 onClick={() => setTheme(option.value)}
                 className={`flex items-center gap-2 px-4 py-2 rounded-lg border transition-colors ${
                   theme === option.value
-                    ? 'bg-blue-600 text-white border-blue-600'
+                    ? 'bg-zinc-200 text-graphite-950 dark:bg-zinc-600 dark:text-graphite-300'
                     : 'bg-gray-50 dark:bg-gray-700 text-gray-700 dark:text-gray-300 border-gray-300 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-600'
                 }`}
               >

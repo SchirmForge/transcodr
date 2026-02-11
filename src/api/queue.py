@@ -21,6 +21,7 @@ from .models import (
     WatchfolderContext,
 )
 from ..jobs import Job, JobRunner, JobState, OutputMode
+from ..core.errors import ValidationError
 from ..profiles.manager import ProfileManager
 
 logger = logging.getLogger(__name__)
@@ -45,6 +46,7 @@ class JobQueue:
         duration_tolerance_seconds: float = 5.0,
         profile_name_separator: str = "_",
         root_media: Optional[Path] = None,
+        min_free_space_gb: int = 10,
     ):
         """
         Initialize job queue.
@@ -56,6 +58,7 @@ class JobQueue:
             duration_tolerance_seconds: Tolerance for duration validation
             profile_name_separator: Separator between filename and profile name
             root_media: Base path for $root_media placeholder expansion
+            min_free_space_gb: Minimum free space safety margin in GB
         """
         self.max_concurrent = max_concurrent
         self.db_path = db_path or Path(":memory:")
@@ -74,6 +77,7 @@ class JobQueue:
         self._job_runner = JobRunner(
             temp_dir=temp_dir,
             duration_tolerance_seconds=duration_tolerance_seconds,
+            min_free_space_gb=min_free_space_gb,
         )
 
         # Folder processors for folder sources (continuous monitoring)
@@ -234,6 +238,20 @@ class JobQueue:
         except sqlite3.OperationalError:
             logger.info("Migrating database: adding source_id column")
             self._conn.execute("ALTER TABLE jobs ADD COLUMN source_id TEXT")
+
+        # Migration: add use_temp_folder column if it doesn't exist
+        try:
+            self._conn.execute("SELECT use_temp_folder FROM jobs LIMIT 1")
+        except sqlite3.OperationalError:
+            logger.info("Migrating database: adding use_temp_folder column")
+            self._conn.execute("ALTER TABLE jobs ADD COLUMN use_temp_folder BOOLEAN DEFAULT 1")
+
+        # Migration: add copy_source_to_temp column if it doesn't exist
+        try:
+            self._conn.execute("SELECT copy_source_to_temp FROM jobs LIMIT 1")
+        except sqlite3.OperationalError:
+            logger.info("Migrating database: adding copy_source_to_temp column")
+            self._conn.execute("ALTER TABLE jobs ADD COLUMN copy_source_to_temp BOOLEAN DEFAULT 1")
 
         # Create index for efficient queries
         self._conn.execute("""
@@ -420,8 +438,8 @@ class JobQueue:
                             profile_index, total_profiles, parent_job_id,
                             created_at, priority, hardware_accel, backup, backup_dir,
                             source_size_bytes, output_mode, delete_source, watchfolder_context,
-                            source_id
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                            source_id, use_temp_folder, copy_source_to_temp
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """, (
                         job_id,
                         JobStatus.PENDING.value,
@@ -441,6 +459,8 @@ class JobQueue:
                         request.delete_source,
                         watchfolder_context_json,
                         source_id,
+                        request.use_temp_folder,
+                        request.copy_source_to_temp,
                     ))
 
                 job_ids.append(job_id)
@@ -592,7 +612,8 @@ class JobQueue:
                 cursor = self._conn.execute(
                     """SELECT id, profile, source_path, output_path, hardware_accel,
                               profile_index, total_profiles, parent_job_id, output_mode,
-                              delete_source, watchfolder_context, source_id
+                              delete_source, watchfolder_context, source_id, use_temp_folder,
+                              copy_source_to_temp
                        FROM jobs WHERE id = ?""",
                     (job_id,)
                 )
@@ -615,6 +636,8 @@ class JobQueue:
             output_mode_str = row["output_mode"] or "replace"
             output_mode = OutputMode(output_mode_str)
             delete_source = bool(row["delete_source"]) if row["delete_source"] is not None else False
+            use_temp_folder = bool(row["use_temp_folder"]) if row["use_temp_folder"] is not None else True
+            copy_source_to_temp = bool(row["copy_source_to_temp"]) if row["copy_source_to_temp"] is not None else True
 
             # Deserialize watchfolder_context if present
             watchfolder_context = None
@@ -629,6 +652,8 @@ class JobQueue:
                 hardware_accel=hardware_accel,
                 output_mode=output_mode,
                 delete_source=delete_source,
+                use_temp_folder=use_temp_folder,
+                copy_source_to_temp=copy_source_to_temp,
             )
             job.id = job_id
             job.output_path = output_path
@@ -668,6 +693,11 @@ class JobQueue:
                 logger.info(f"Job {job_id} interrupted by shutdown")
                 await self._update_job_status(job_id, JobStatus.INTERRUPTED)
             raise  # Re-raise to propagate cancellation
+
+        except ValidationError as e:
+            # Validation failures are expected conditions — log cleanly without traceback
+            logger.warning(f"Job {job_id} validation failed: {e}")
+            await self._update_job_failed(job_id, str(e))
 
         except Exception as e:
             logger.error(f"Job {job_id} failed: {e}", exc_info=True)
@@ -982,9 +1012,9 @@ class JobQueue:
         except Exception:
             pass  # Profile lookup failed, leave fields as None
 
-        # Check if temp folder is disabled (from watchfolder_context)
-        use_temp_folder = True
-        if row["watchfolder_context"]:
+        # Check if temp folder is enabled (from DB column, fallback to watchfolder_context)
+        use_temp_folder = bool(row["use_temp_folder"]) if row["use_temp_folder"] is not None else True
+        if use_temp_folder and row["watchfolder_context"]:
             try:
                 ctx_data = json.loads(row["watchfolder_context"])
                 use_temp_folder = not ctx_data.get("disable_temp_copy", False)

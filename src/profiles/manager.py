@@ -270,6 +270,7 @@ class ProfileManager:
                 "hardware_variants": list(profile.hardware_variants.keys()) if profile.hardware_variants else [],
                 "audio": "copy" if profile.audio.copy_streams else profile.audio.codec,
                 "tags": profile.tags,
+                "destination": profile.destination,
             }
         except Exception as e:
             return {"name": name, "error": str(e)}

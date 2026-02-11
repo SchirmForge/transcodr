@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { NavLink, useLocation } from 'react-router-dom'
+import { NavLink, useLocation, useNavigate } from 'react-router-dom'
 import logoImg from '../../assets/videoforge-final-alpha.png'
 
 interface NavItem {
@@ -18,16 +18,16 @@ const navigation: NavSection[] = [
     id: 'jobs',
     title: 'Jobs',
     items: [
-      { label: 'Activity', to: '/jobs/activity' },
+      { label: 'Create Job', to: '/jobs/create' },
       { label: 'History', to: '/jobs/history' },
     ],
   },
   {
-    id: 'monitoring',
-    title: 'Monitoring',
+    id: 'configuration',
+    title: 'Configuration',
     items: [
-      { label: 'Watch Folders', to: '/watchfolders' },
-      { label: 'Profiles', to: '/profiles' },
+      { label: 'Watch Folders', to: '/configuration/watchfolders' },
+      { label: 'Profiles', to: '/configuration/profiles' },
     ],
   },
   {
@@ -46,7 +46,7 @@ const navigation: NavSection[] = [
   },
 ]
 
-function ChevronIcon({ expanded }: { expanded: boolean }) {
+/* function ChevronIcon({ expanded }: { expanded: boolean }) {
   return (
     <svg
       className={`w-4 h-4 transition-transform duration-200 ${expanded ? 'rotate-90' : ''}`}
@@ -57,9 +57,12 @@ function ChevronIcon({ expanded }: { expanded: boolean }) {
       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
     </svg>
   )
-}
+} */
 
 function findActiveSectionId(pathname: string): string | null {
+  if (pathname.startsWith('/jobs')) {
+    return 'jobs'
+  }
   for (const section of navigation) {
     if (section.items.some(item => pathname.startsWith(item.to))) {
       return section.id
@@ -70,6 +73,7 @@ function findActiveSectionId(pathname: string): string | null {
 
 export function Sidebar() {
   const location = useLocation()
+  const navigate = useNavigate()
   const [expandedSection, setExpandedSection] = useState<string | null>(null)
 
   // Auto-expand section based on current route
@@ -81,14 +85,19 @@ export function Sidebar() {
   }, [location.pathname])
 
   const toggleSection = (sectionId: string) => {
+    if (sectionId === 'jobs') {
+      setExpandedSection('jobs')
+      navigate('/jobs/activity')
+      return
+    }
     setExpandedSection(prev => prev === sectionId ? null : sectionId)
   }
 
   return (
-    <aside className="w-56 bg-sky-100 dark:bg-sky-900 text-gray-100 flex flex-col min-h-screen">
-      <div className="p-4 border-b border-gray-700">
+    <aside className="w-56 bg-graphite-200 dark:bg-graphite-950 text-steel-800 dark:text-steel-100 flex flex-col min-h-screen">
+      <div className="p-4">
         <img src={logoImg} alt="Video Forge" className="w-full" />
-        <span className="text-xs text-gray-400 block text-center mt-1">v0.3</span>
+        <span className="text-xs text-steel-400 block text-center mt-1">v0.3</span>
       </div>
       <nav className="flex-1 p-2 overflow-y-auto">
         {navigation.map((section) => {
@@ -101,12 +110,12 @@ export function Sidebar() {
                 onClick={() => toggleSection(section.id)}
                 className={`w-full flex items-center justify-between px-3 py-2 rounded text-sm font-medium transition-colors ${
                   isActiveSection
-                    ? 'bg-gray-800 text-white'
-                    : 'text-gray-300 hover:bg-gray-800 hover:text-white'
+                    ? 'bg-graphite-300 text-steel-700 dark:bg-graphite-800 dark:text-steel-100'
+                    : 'text-steel-600 hover:bg-graphite-100 hover:text-steel-900 dark:text-steel-300 dark:hover:bg-graphite-800 dark:hover:text-steel-100'
                 }`}
               >
-                <span>{section.title}</span>
-                <ChevronIcon expanded={isExpanded} />
+                 <span>{section.title}</span>
+                {/* <ChevronIcon expanded={isExpanded} /> */}
               </button>
 
               <div
@@ -114,7 +123,7 @@ export function Sidebar() {
                   isExpanded ? 'max-h-40 opacity-100' : 'max-h-0 opacity-0'
                 }`}
               >
-                <ul className="mt-1 ml-3 space-y-1 border-l border-gray-700 pl-3">
+                <ul className="mt-1 ml-3 space-y-1 border-l border-graphite-400 dark:border-graphite-800 pl-3">
                   {section.items.map((item) => (
                     <li key={item.to}>
                       <NavLink
@@ -122,8 +131,8 @@ export function Sidebar() {
                         className={({ isActive }) =>
                           `block px-3 py-1.5 rounded text-sm transition-colors ${
                             isActive
-                              ? 'bg-blue-600 text-white'
-                              : 'text-gray-400 hover:bg-gray-800 hover:text-white'
+                              ? 'bg-zinc-200 text-graphite-950 dark:bg-zinc-600 dark:text-graphite-300'
+                              : 'text-steel-600 hover:bg-graphite-100 hover:text-steel-900 dark:text-steel-400 dark:hover:bg-graphite-800 dark:hover:text-steel-100'
                           }`
                         }
                       >
