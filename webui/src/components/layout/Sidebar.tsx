@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { NavLink, useLocation, useNavigate } from 'react-router-dom'
-import logoImg from '../../assets/videoforge-final-alpha.png'
+import logoImg from '../../assets/transcodr-final-alpha.png'
 
 interface NavItem {
   label: string
