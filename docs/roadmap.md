@@ -1,6 +1,6 @@
 # transcodr Roadmap
 
-## Current Version: 0.2.3
+## Current Version: 0.3.3
 
 ## Use Cases Overview
 
@@ -142,6 +142,46 @@
 
 ---
 
+## Completed Features (v0.3.1)
+
+### Web UI — Basic Layout
+- [x] React + Vite + TypeScript stack
+- [x] Left-nav layout with Jobs / Configuration / Settings / System sections
+- [x] Tailwind CSS with custom brand color palette
+- [x] Dark/light mode support
+- [x] Jobs activity page with live progress polling
+- [x] Jobs history page with completed/failed filters
+- [x] Watch folders status list
+- [x] Profiles page with card-based display
+- [x] System status page with hardware info and queue status
+- [x] SPA served directly from daemon (no separate web server)
+
+---
+
+## Completed Features (v0.3.2)
+
+### Bug Fixes
+- [x] Duration tolerance default changed from 5s to 10s
+- [x] Watchfolder initial sweep on startup to detect existing files
+- [x] File stability detection improvements for large network files
+
+---
+
+## Completed Features (v0.3.3)
+
+### Manual Encoding via Web UI
+- [x] Create Job page with multi-step form (files → profiles → options → review)
+- [x] File browser endpoint (`GET /api/browse`) for filesystem navigation
+- [x] Profile selector with card-based UI (codec, container, CRF, destination status)
+- [x] `use_temp_folder` option — encode to temp folder first, then move to output
+- [x] `copy_source_to_temp` option — copy source to temp before multi-profile encoding
+- [x] Fixed disk space estimation formula (`source_size + min_free_space_gb` instead of `source_size * 2 + 10GB`)
+- [x] Improved error handling: `ValidationError` logged as warning, not error with traceback
+- [x] Improved insufficient temp space error message with actionable suggestions
+- [x] All API endpoints moved under `/api` prefix for clean SPA/API separation
+
+---
+
 ## Planned Features
 
 ### Version 0.2.4: Subtitles Management
@@ -160,13 +200,16 @@
 - [ ] Lossless audio formats: FLAC, WAV, ALAC, APE, WavPack, DSD
 - [ ] Audio-specific encoding profiles
 
-### Version 0.3: Web UI
-- [ ] Left-nav layout with Jobs/Watch Folders/Profiles/Settings/System
-- [ ] Jobs activity + history views with filters and ordering
-- [ ] Job detail accordion with resubmit support
-- [ ] Watch folder status list
-- [ ] React + Vite + TypeScript stack
-- [ ] Daemon API integration with polling
+### Version 0.3: Web UI (**DONE** - v0.3.3)
+- [x] Left-nav layout with Jobs/Configuration/Settings/System
+- [x] Jobs activity + history views with filters
+- [x] Create Job page with file browser and profile selector
+- [x] Watch folder status list
+- [x] Profile display with card-based UI
+- [x] System status with hardware and queue info
+- [x] React 19 + Vite + TypeScript + Tailwind CSS 4 stack
+- [x] Daemon API integration with React Query polling
+- [x] SPA served directly from daemon
 
 ### Version 0.4.1: Video Analysis Profiles
 - [ ] New `analysis` profile type with deterministic + perceptual phases
@@ -201,12 +244,10 @@
 - When the runner throws an exception, mark file as `.failed` (not `.processing`)
 - Catch and log runner exceptions consistently
 - Disallow replace + disable_temp combo for multi-profile runs; enforce in runner
-- Make `duration_tolerance` disable with 0 (default 5)
 - Client job names should not include `.processing`
 - Avoid 60s fixed timeout when waiting for temp copy state
 - Add input/output FFmpeg args to fix `.mts` stream-copy artifacts
 - Add audio stream selection options (first-only vs all)
-- Web UI should allow selection of a specific workflow/command
 
 ---
 
@@ -217,10 +258,13 @@
 - Distributed encoding (0.4.2)
 - Video filters (0.4.3)
 
-### v0.3 (Planned)
-- Web UI with React + Vite + TypeScript
+### v0.3 (Current - v0.3.3 Released)
+- ✅ Web UI basic layout (0.3.1) - **DONE**
+- ✅ Bug fixes (0.3.2) - **DONE**
+- ✅ Manual encoding with web UI (0.3.3) - **DONE**
+- MTS stream-copy artifact fixes (0.3.4)
 
-### v0.2 (Current - v0.2.3 Released)
+### v0.2 (v0.2.3 Released)
 - ✅ Watch folder improvements (0.2.1) - **DONE**
 - ✅ Extract profiles and stream mapping (0.2.2) - **DONE**
 - ✅ Profile/job parameters (0.2.3) - **DONE**
@@ -228,7 +272,15 @@
 - Notifications (0.2.5)
 - Audio file encoding (0.2.6)
 
-### v0.2.3 (Current)
+### v0.3.3 (Current)
+- Create Job page with file browser, profile selector, and multi-step form
+- File browser API endpoint (`GET /api/browse`)
+- `use_temp_folder` and `copy_source_to_temp` options for encoding jobs
+- Fixed disk space estimation formula
+- Improved error handling for validation errors
+- All API endpoints under `/api` prefix
+
+### v0.2.3
 - Profile-level `destination:` with path placeholder support
 - `use_profile_destination: true` for commands/watchfolders
 - Per-source `max_concurrent_jobs` concurrency limits

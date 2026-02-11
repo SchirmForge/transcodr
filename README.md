@@ -4,6 +4,7 @@ A robust, production-ready video transcoding system with daemon, CLI, and API in
 
 ## Features
 
+- **Web UI** - Built-in React web interface for job management, file browsing, and manual encoding
 - **Daemon-based architecture** - Background service with REST API
 - **Multi-profile encoding** - Encode one source to multiple formats simultaneously
 - **Watch folders** - Automatic encoding via command files or direct media detection
@@ -14,82 +15,68 @@ A robust, production-ready video transcoding system with daemon, CLI, and API in
 - **SQLite persistence** - Job queue survives daemon restarts
 - **Portable configs** - Use `$root_media`, `$HOME`, `~` placeholders in paths
 
-## Project Status: Version 0.2.3
+## Project Status: Version 0.3.3
 
-### What's New in v0.2.3
+### What's New in v0.3.3
 
-**Profile-Level Destinations**
-- Profiles can define their own `destination:` folder (absolute path)
-- Use `use_profile_destination: true` in commands/watchfolders to output to each profile's folder
-- Supports path placeholders (`$root_media`, `~`, `$HOME`)
-- Validation ensures profile destination directories exist
+**Web UI — Manual Encoding**
+- Create Job page with multi-step form: select files, choose profiles, configure options, review and submit
+- Built-in file browser for navigating the filesystem and selecting video files
+- Profile selector with card-based UI showing codec, container, CRF, and destination status
+- `use_temp_folder` option — encode to temp folder first, then move to output (default: on)
+- `copy_source_to_temp` option — copy source to temp before multi-profile encoding (default: on)
 
-**Configurable Output Naming**
-- `profile_name_separator` config option for `append_profile_name` feature (default: `_`)
-- Customize how profile names are appended to filenames
+**Encoding Improvements**
+- Fixed disk space estimation: `source_size + min_free_space_gb` (was `source_size * 2 + 10GB`)
+- Improved error message for insufficient temp space (shows path, breakdown, and suggestions)
+- Validation errors (space check, bad profile) logged as warnings instead of error tracebacks
 
-**Per-Source Concurrency Limits**
-- `max_concurrent_jobs` option in watchfolders and commands
-- Limit how many jobs run simultaneously from a single source
-- Useful for resource management on slower storage
+**API**
+- All API endpoints moved under `/api` prefix for clean SPA separation
+- New `GET /api/browse` endpoint for filesystem browsing
 
-### What's New in v0.2.2
+### What's New in v0.3.1 — v0.3.2
 
-**Multi-Profile Concurrent Encoding**
-- Fixed race conditions when encoding with multiple profiles concurrently
-- Ref-count based finalization ensures proper cleanup when all profiles complete
-- `disable_temp_copy` option now works correctly for all profiles
+**Web UI — Basic Layout (v0.3.1)**
+- React 19 + Vite + TypeScript + Tailwind CSS 4
+- Left-nav layout with Jobs / Configuration / Settings / System
+- Jobs activity and history pages with live progress polling
+- Watch folders, profiles, and system status pages
+- Dark/light mode support
+- SPA served directly from the daemon (no separate web server needed)
 
-**Stream Handling**
-- Include all audio streams from source (`audio.all: true`, default)
-- Include all subtitle streams from source (`subtitles.all: true`, default)
-- Proper stream mapping with VAAPI hardware encoding
+**Bug Fixes (v0.3.2)**
+- Duration tolerance improvements
+- Watchfolder initial sweep on startup
+- File stability detection for network files
 
-**Reliability**
-- Fixed SQLite transaction errors under concurrent load
-- Fixed container format issues (temp files now use profile's container)
-- Profile cache clears on daemon reload for immediate profile updates
+### Previous Versions
 
-### What's New in v0.2.1
+<details>
+<summary>v0.2.x release notes</summary>
 
-**Watch Folder Improvements**
-- `$root_media` placeholder for portable command files and watchfolder configs
-- Environment variable expansion (`$HOME`, `${HOME}`, `~`, `$USER`)
-- Folder drop processing with `allow_folder_drop` option
-- Nested subdirectory scanning with stability detection
-- `preserve_folder_structure` works correctly for dropped folders
-- Automatic folder completion tracking with `.processed` rename or delete
+**v0.2.3 — Profile-Level Destinations**
+- Profiles can define their own `destination:` folder
+- `use_profile_destination: true` in commands/watchfolders
+- Per-source `max_concurrent_jobs` concurrency limits
+- Configurable `profile_name_separator`
 
-**Code Architecture**
-- Dedicated `src/watcher/` module for all watchfolder functionality
-- Cleaner separation of concerns (schema, manager, watchers, service)
+**v0.2.2 — Multi-Profile Reliability**
+- Fixed race conditions with concurrent multi-profile encoding
+- Ref-count based finalization
+- All audio/subtitle stream mapping
+- SQLite transaction fixes, container format fixes
 
-### Core Features (v0.1)
+**v0.2.1 — Watch Folder Improvements**
+- `$root_media` placeholder and environment variable expansion
+- Folder drop processing with nested subdirectory scanning
+- Dedicated `src/watcher/` module
 
-**Core Encoding**
-- FFmpeg wrapper with progress streaming
-- ffprobe helpers (codec detection, duration, validation)
-- Profile management (YAML-based, inheritance, hardware variants)
-- Safe file replacement (cross-device, backup, rollback)
-- Multi-profile encoding (one source -> multiple outputs)
-
-**Daemon & API**
-- FastAPI REST API with full CRUD operations
-- Job queue with SQLite persistence
-- Watch folder monitoring (command and media types)
-- Priority-based job ordering
-- Concurrent job execution (configurable)
-- Profile management endpoints
-- Configuration reload without restart
-
-**Hardware**
-- VAAPI detection and auto-selection (AMD/Intel GPU)
-- Hardware variants in profiles
-
-**CLI**
-- Full CLI client for daemon API
-- Profile listing and management
-- Job monitoring and control
+**v0.1 — Core**
+- FFmpeg wrapper with progress streaming, profile management, safe file replacement
+- FastAPI REST API with SQLite persistence, job queue, watch folders
+- VAAPI hardware acceleration, full CLI client
+</details>
 
 ## Quick Start
 
@@ -113,7 +100,7 @@ python src/cli/init.py
 python -m src.daemon
 ```
 
-The daemon starts on `http://127.0.0.1:8765` by default.
+The daemon starts on `http://127.0.0.1:8765` by default. The Web UI is available at the same address.
 
 ### 3. Submit an Encoding Job
 
@@ -181,6 +168,8 @@ python -m src.cli.client profiles
 | `create_profile_folders` | Create subfolder per profile (e.g., `dest/x265-balanced/`) |
 | `append_profile_name` | Add profile name to filename (e.g., `video_x265-balanced.mkv`) |
 | `delete_source` | Delete source after successful encoding |
+| `use_temp_folder` | Encode to temp folder first, then move to output (default: true) |
+| `copy_source_to_temp` | Copy source to temp before multi-profile encoding (default: true) |
 | `backup` | Create backup before replacing (default: true) |
 | `priority` | Job priority 1-10 (default: 5) |
 | `max_concurrent_jobs` | Limit concurrent jobs from this request |
@@ -275,23 +264,26 @@ See [docs/watchfolders.md](docs/watchfolders.md) for detailed guide.
 
 | Endpoint | Method | Description |
 |----------|--------|-------------|
-| `/status` | GET | Daemon status and queue info |
-| `/jobs` | GET | List all jobs |
-| `/jobs` | POST | Submit encoding job |
-| `/jobs/{id}` | GET | Get job details |
-| `/jobs/{id}` | DELETE | Cancel job |
-| `/profiles` | GET | List all profiles |
-| `/profiles/{name}` | GET | Get profile details |
-| `/profiles/{name}` | DELETE | Delete user profile |
-| `/watchfolders` | GET | List all watchfolders |
-| `/watchfolders/{id}` | GET | Get watchfolder details |
-| `/watchfolders/{id}` | DELETE | Remove watchfolder |
-| `/watchfolders/{id}/pause` | POST | Pause watchfolder |
-| `/watchfolders/{id}/resume` | POST | Resume watchfolder |
-| `/queue/pause` | POST | Pause job queue |
-| `/queue/resume` | POST | Resume job queue |
-| `/reload` | POST | Reload configuration |
-| `/purge` | POST | Purge job database |
+| `/api/status` | GET | Daemon status and queue info |
+| `/api/health` | GET | Health check |
+| `/api/browse` | GET | Browse filesystem for video files |
+| `/api/jobs` | GET | List all jobs |
+| `/api/jobs` | POST | Submit encoding job |
+| `/api/jobs/{id}` | GET | Get job details |
+| `/api/jobs/{id}` | DELETE | Cancel job |
+| `/api/jobs/{id}/retry` | POST | Retry failed job |
+| `/api/profiles` | GET | List all profiles |
+| `/api/profiles/{name}` | GET | Get profile details |
+| `/api/profiles/{name}` | DELETE | Delete user profile |
+| `/api/watchfolders` | GET | List all watchfolders |
+| `/api/watchfolders/{id}` | GET | Get watchfolder details |
+| `/api/watchfolders/{id}` | DELETE | Remove watchfolder |
+| `/api/watchfolders/{id}/pause` | POST | Pause watchfolder |
+| `/api/watchfolders/{id}/resume` | POST | Resume watchfolder |
+| `/api/queue/pause` | POST | Pause job queue |
+| `/api/queue/resume` | POST | Resume job queue |
+| `/api/reload` | POST | Reload configuration |
+| `/api/purge` | POST | Purge job database |
 
 See [docs/api-reference.md](docs/api-reference.md) for complete documentation.
 
@@ -365,7 +357,8 @@ See [docs/concurrency-tuning.md](docs/concurrency-tuning.md) for tuning guide.
 ## Architecture
 
 This project follows an **API-first architecture**:
-- Daemon runs FastAPI server + job queue + worker threads
+- Daemon runs FastAPI server + job queue + worker threads + Web UI
+- Web UI is a React SPA served directly by the daemon
 - CLI is a thin client making HTTP requests to daemon
 - All interfaces have identical capabilities
 

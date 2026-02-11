@@ -22,7 +22,7 @@ A robust, production-ready video transcoding system with a daemon at its core ex
 │                      User Interfaces                         │
 │  ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌──────────┐   │
 │  │   CLI    │  │  Web UI  │  │   GUI    │  │  Scripts │   │
-│  │ (Typer)  │  │ (React?) │  │ (Future) │  │ (Python) │   │
+│  │ (Typer)  │  │ (React)  │  │ (Future) │  │ (Python) │   │
 │  └────┬─────┘  └────┬─────┘  └────┬─────┘  └────┬─────┘   │
 └───────┼─────────────┼─────────────┼─────────────┼──────────┘
         │             │             │             │
@@ -229,6 +229,48 @@ transcode-cli encode <file> --profile <name> --no-daemon      # Direct encode
 - `daemon start`: Must spawn daemon process locally
 - `inspect`: Lightweight, no need for daemon overhead
 - `encode --no-daemon`: Explicit bypass for scripting or daemon-less use
+
+---
+
+## Web UI Architecture
+
+### Stack
+
+- **React 19** with TypeScript
+- **Vite** for build tooling
+- **Tailwind CSS 4** for styling
+- **React Router** for client-side routing
+- **TanStack React Query** for data fetching and caching
+
+### Serving
+
+The Web UI is built as a static SPA (`webui/dist/`) and served directly by the daemon's FastAPI server:
+- Static assets (`/assets/*`) are served via `StaticFiles`
+- All other non-API routes fall through to `index.html` for client-side routing
+- API endpoints live under the `/api` prefix, keeping them cleanly separated from the SPA
+
+### Pages
+
+```
+Jobs > Activity         — Active and queued jobs with progress
+Jobs > Create           — Multi-step form to submit encoding jobs
+Jobs > History          — Completed and failed job history
+Configuration > Watch Folders  — Watch folder status and management
+Configuration > Profiles       — Available encoding profiles
+Settings > General      — General settings
+System > Status         — Daemon status, hardware, queue info
+```
+
+### Data Fetching
+
+React Query handles all API communication with:
+- 5-second stale time
+- 10-second refetch interval for live data (job progress, queue status)
+- Automatic cache invalidation on mutations
+
+### File Browser
+
+The Create Job page includes a filesystem browser that uses the `GET /api/browse` endpoint to navigate directories and select video files for encoding.
 
 ---
 
@@ -1240,6 +1282,15 @@ transcodr/
 │   ├── architecture.md         # This file
 │   ├── user-guide.md           # End-user documentation
 │   └── api-reference.md        # API endpoint documentation
+├── webui/                      # Web UI (React + Vite + TypeScript)
+│   ├── src/
+│   │   ├── api/                # API client and types
+│   │   ├── components/         # Shared components (Layout, ProfileSelector, etc.)
+│   │   ├── hooks/              # React Query hooks
+│   │   └── pages/              # Page components (jobs, configuration, settings, system)
+│   ├── dist/                   # Built SPA (served by daemon)
+│   ├── package.json
+│   └── vite.config.ts
 ├── local-docs/                 # Development notes (not for users)
 │   └── readme-dev.md
 ├── scripts/
@@ -1367,8 +1418,7 @@ transcodr/
 
 ## Future Enhancements (Out of Scope for v1)
 
-1. **Web UI**: React dashboard using same API
-2. **Distributed**: Multiple worker nodes, central coordinator
+1. **Distributed**: Multiple worker nodes, central coordinator
 3. **Cloud Storage**: S3/GCS input/output
 4. **Advanced Profiles**: Conditional logic, scene-based encoding
 5. **Analytics**: Space saved, processing stats

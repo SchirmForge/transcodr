@@ -16,16 +16,6 @@ audio:
 subtitles:
   copy: true  # Copy subtitle streams
 
-# Hardware acceleration variants
-hardware_variants:
-  vaapi:
-    video:
-      codec: hevc_vaapi
-      hwaccel: vaapi
-      hwaccel_device: /dev/dri/renderD128
-      extra_options:
-        qp: "23"
-
 tags:
   - base
   - x265

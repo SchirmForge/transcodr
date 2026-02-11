@@ -40,7 +40,7 @@ _job_queue: Optional[JobQueue] = None
 _watchfolder_service: Optional[WatchfolderService] = None
 _config = None
 
-VERSION = "0.1.0"
+VERSION = "0.3.3"
 
 
 @asynccontextmanager

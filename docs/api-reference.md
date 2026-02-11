@@ -1,6 +1,8 @@
 # API Reference
 
-The Video Transcode daemon exposes a REST API on `http://127.0.0.1:8765` (configurable).
+The Transcodr daemon exposes a REST API on `http://127.0.0.1:8765` (configurable).
+
+All API endpoints are under the `/api` prefix.
 
 ## Authentication
 
@@ -9,14 +11,14 @@ No authentication is currently required. The API binds to localhost by default f
 ## Base URL
 
 ```
-http://localhost:8765
+http://localhost:8765/api
 ```
 
 ---
 
 ## Status Endpoints
 
-### GET /status
+### GET /api/status
 
 Get daemon status and queue information.
 
@@ -24,7 +26,7 @@ Get daemon status and queue information.
 ```json
 {
   "running": true,
-  "version": "0.1.0",
+  "version": "0.3.3",
   "uptime_seconds": 3600.5,
   "queue": {
     "total_jobs": 15,
@@ -46,11 +48,63 @@ Get daemon status and queue information.
 }
 ```
 
+### GET /api/health
+
+Health check endpoint.
+
+**Response:**
+```json
+{
+  "status": "healthy"
+}
+```
+
+---
+
+## File Browser Endpoint
+
+### GET /api/browse
+
+Browse the filesystem for video files and directories. Defaults to `root_media` from config.
+
+**Query Parameters:**
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `path` | string | Directory path to browse (defaults to root_media) |
+
+**Response:**
+```json
+{
+  "current_path": "/media/videos",
+  "parent_path": "/media",
+  "root_media": "/media/videos",
+  "entries": [
+    {
+      "name": "movies",
+      "type": "directory",
+      "path": "/media/videos/movies"
+    },
+    {
+      "name": "movie.mkv",
+      "type": "file",
+      "path": "/media/videos/movie.mkv",
+      "size": 5000000000
+    }
+  ]
+}
+```
+
+**Notes:**
+- Returns directories and video files only (mkv, mp4, avi, mov, wmv, flv, webm, m2ts, ts, mts)
+- Hidden files (starting with `.`) are excluded
+- Sensitive system paths (`/proc`, `/sys`, `/dev`, `/etc`, `/boot`, `/root`) are blocked
+- Maximum 1000 entries per directory
+
 ---
 
 ## Job Endpoints
 
-### GET /jobs
+### GET /api/jobs
 
 List all jobs.
 
@@ -85,7 +139,7 @@ List all jobs.
 }
 ```
 
-### POST /jobs
+### POST /api/jobs
 
 Submit a new encoding job.
 
@@ -102,6 +156,8 @@ Submit a new encoding job.
     "create_profile_folders": false,
     "append_profile_name": false,
     "delete_source": false,
+    "use_temp_folder": true,
+    "copy_source_to_temp": true,
     "backup": true,
     "recursive": false,
     "file_patterns": ["*.mkv", "*.mp4"],
@@ -125,6 +181,8 @@ Submit a new encoding job.
 | `create_profile_folders` | bool | No | `false` | Create subfolder per profile (mutually exclusive with `use_profile_destination`) |
 | `append_profile_name` | bool | No | `false` | Add profile name to filename |
 | `delete_source` | bool | No | `false` | Delete source after encoding |
+| `use_temp_folder` | bool | No | `true` | Encode to temp folder first, then move to output (safer but needs temp space) |
+| `copy_source_to_temp` | bool | No | `true` | Copy source to temp before encoding (for multi-profile jobs on network storage) |
 | `backup` | bool | No | `true` | Create backup (replace mode only) |
 | `backup_dir` | string | No | `.originals` | Backup directory |
 | `recursive` | bool | No | `true` | Process subdirectories |
@@ -145,7 +203,7 @@ Submit a new encoding job.
 }
 ```
 
-### GET /jobs/{id}
+### GET /api/jobs/{id}
 
 Get job details by ID.
 
@@ -173,7 +231,7 @@ Get job details by ID.
 }
 ```
 
-### DELETE /jobs/{id}
+### DELETE /api/jobs/{id}
 
 Cancel a job.
 
@@ -185,11 +243,20 @@ Cancel a job.
 }
 ```
 
----
+### POST /api/jobs/{id}/retry
 
-## Profile Endpoints
+Retry a failed job.
 
-### GET /profiles
+**Response:**
+```json
+{
+  "id": "abc12345-1234-5678-9abc-def012345678",
+  "status": "pending",
+  ...
+}
+```
+
+### GET /api/profiles
 
 List all available encoding profiles.
 
@@ -218,7 +285,7 @@ List all available encoding profiles.
 }
 ```
 
-### GET /profiles/{name}
+### GET /api/profiles/{name}
 
 Get profile details.
 
@@ -254,7 +321,7 @@ Get profile details.
 }
 ```
 
-### DELETE /profiles/{name}
+### DELETE /api/profiles/{name}
 
 Delete a user profile. Built-in profiles cannot be deleted.
 
@@ -265,7 +332,7 @@ Delete a user profile. Built-in profiles cannot be deleted.
 
 **Request:**
 ```
-DELETE /profiles/my-custom?confirm=true
+DELETE /api/profiles/my-custom?confirm=true
 ```
 
 **Response:**
@@ -287,7 +354,7 @@ DELETE /profiles/my-custom?confirm=true
 
 ## Watchfolder Endpoints
 
-### GET /watchfolders
+### GET /api/watchfolders
 
 List all watchfolders (config-based and API-registered).
 
@@ -320,11 +387,11 @@ List all watchfolders (config-based and API-registered).
 }
 ```
 
-### GET /watchfolders/{id}
+### GET /api/watchfolders/{id}
 
 Get watchfolder details.
 
-### DELETE /watchfolders/{id}
+### DELETE /api/watchfolders/{id}
 
 Remove a watchfolder. Config-based watchfolders cannot be removed via API.
 
@@ -336,7 +403,7 @@ Remove a watchfolder. Config-based watchfolders cannot be removed via API.
 }
 ```
 
-### POST /watchfolders/{id}/pause
+### POST /api/watchfolders/{id}/pause
 
 Pause a watchfolder.
 
@@ -348,7 +415,7 @@ Pause a watchfolder.
 }
 ```
 
-### POST /watchfolders/{id}/resume
+### POST /api/watchfolders/{id}/resume
 
 Resume a paused watchfolder.
 
@@ -364,7 +431,7 @@ Resume a paused watchfolder.
 
 ## Queue Control Endpoints
 
-### POST /queue/pause
+### POST /api/queue/pause
 
 Pause the job queue. Running jobs continue, but no new jobs start.
 
@@ -376,7 +443,7 @@ Pause the job queue. Running jobs continue, but no new jobs start.
 }
 ```
 
-### POST /queue/resume
+### POST /api/queue/resume
 
 Resume the job queue.
 
@@ -388,7 +455,7 @@ Resume the job queue.
 }
 ```
 
-### POST /queue/clear-completed
+### DELETE /api/queue/completed
 
 Clear completed jobs from history.
 
@@ -400,7 +467,7 @@ Clear completed jobs from history.
 }
 ```
 
-### POST /queue/clear-failed
+### DELETE /api/queue/failed
 
 Clear failed jobs from history.
 
@@ -416,7 +483,7 @@ Clear failed jobs from history.
 
 ## Admin Endpoints
 
-### POST /reload
+### POST /api/reload
 
 Reload configuration and watchfolders without restarting the daemon.
 
@@ -429,7 +496,7 @@ Reload configuration and watchfolders without restarting the daemon.
 }
 ```
 
-### POST /purge
+### POST /api/purge
 
 Purge all jobs from the database.
 
@@ -441,7 +508,7 @@ Purge all jobs from the database.
 
 **Request:**
 ```
-POST /purge?confirm=true&force=false
+POST /api/purge?confirm=true&force=false
 ```
 
 **Response:**
@@ -488,7 +555,7 @@ All endpoints return standard HTTP status codes:
 ### Submit a simple encoding job
 
 ```bash
-curl -X POST http://localhost:8765/jobs \
+curl -X POST http://localhost:8765/api/jobs \
   -H "Content-Type: application/json" \
   -d '{
     "request": {
@@ -502,7 +569,7 @@ curl -X POST http://localhost:8765/jobs \
 ### Submit multi-profile job to destination
 
 ```bash
-curl -X POST http://localhost:8765/jobs \
+curl -X POST http://localhost:8765/api/jobs \
   -H "Content-Type: application/json" \
   -d '{
     "request": {
@@ -520,23 +587,23 @@ curl -X POST http://localhost:8765/jobs \
 ### Check job status
 
 ```bash
-curl http://localhost:8765/jobs/abc12345-1234-5678-9abc-def012345678
+curl http://localhost:8765/api/jobs/abc12345-1234-5678-9abc-def012345678
 ```
 
 ### List profiles
 
 ```bash
-curl http://localhost:8765/profiles
+curl http://localhost:8765/api/profiles
 ```
 
 ### Reload configuration
 
 ```bash
-curl -X POST http://localhost:8765/reload
+curl -X POST http://localhost:8765/api/reload
 ```
 
 ### Purge database
 
 ```bash
-curl -X POST "http://localhost:8765/purge?confirm=true"
+curl -X POST "http://localhost:8765/api/purge?confirm=true"
 ```
