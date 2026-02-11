@@ -63,7 +63,7 @@ function Breadcrumbs({ path, onNavigate }: { path: string; onNavigate: (path: st
 
 export function FileBrowser({ onSelect, selectionMode, initialPath }: FileBrowserProps) {
   const [currentPath, setCurrentPath] = useState<string | null>(initialPath ?? null)
-  const { data, isLoading, isError, error } = useBrowse(currentPath)
+  const { data, isLoading, isError, error, refetch, isFetching } = useBrowse(currentPath)
 
   // Update path when browse response comes back (handles initial null -> root_media)
   useEffect(() => {
@@ -118,6 +118,16 @@ export function FileBrowser({ onSelect, selectionMode, initialPath }: FileBrowse
         >
           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
+          </svg>
+        </button>
+        <button
+          onClick={() => refetch()}
+          disabled={isFetching}
+          className="p-1.5 rounded hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-400 disabled:opacity-30"
+          title="Refresh"
+        >
+          <svg className={`w-4 h-4 ${isFetching ? 'animate-spin' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
           </svg>
         </button>
         <div className="flex-1 min-w-0">

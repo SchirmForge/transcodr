@@ -1,0 +1,27 @@
+services:
+  transcodr:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    ports:
+      - "8765:8765"
+    volumes:
+      - ./config:/config          # Config, profiles, watchfolders, jobs.db
+      - /path/to/media:/media     # root_media mount — change to your media path
+      - /tmp/transcodr:/temp      # Temp encoding directory
+    environment:
+      - TRANSCODR_CONFIG_DIR=/config
+    restart: unless-stopped
+
+    # ─── GPU Passthrough (uncomment one section) ───────────────────────
+    #
+    # VAAPI (AMD/Intel GPU):
+    # devices:
+    #   - /dev/dri:/dev/dri
+    #
+    # NVIDIA GPU (requires nvidia-container-toolkit):
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - capabilities: [gpu]

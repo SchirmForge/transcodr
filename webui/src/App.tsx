@@ -7,6 +7,10 @@ import { HistoryPage } from './pages/jobs/HistoryPage'
 import { WatchfoldersPage } from './pages/encoding-rules/WatchfoldersPage'
 import { ProfilesPage } from './pages/encoding-rules/ProfilesPage'
 import { GeneralPage } from './pages/settings/GeneralPage'
+import { StoragePage } from './pages/settings/StoragePage'
+import { EncodingPage } from './pages/settings/EncodingPage'
+import { DaemonPage } from './pages/settings/DaemonPage'
+import { LoggingPage } from './pages/settings/LoggingPage'
 import { StatusPage } from './pages/system/StatusPage'
 
 const queryClient = new QueryClient({
@@ -32,6 +36,10 @@ function App() {
             <Route path="/encoding-rules/watchfolders" element={<WatchfoldersPage />} />
             <Route path="/encoding-rules/profiles" element={<ProfilesPage />} />
             <Route path="/settings/general" element={<GeneralPage />} />
+            <Route path="/settings/storage" element={<StoragePage />} />
+            <Route path="/settings/encoding" element={<EncodingPage />} />
+            <Route path="/settings/daemon" element={<DaemonPage />} />
+            <Route path="/settings/logging" element={<LoggingPage />} />
             <Route path="/system/status" element={<StatusPage />} />
           </Route>
         </Routes>

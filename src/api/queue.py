@@ -218,6 +218,13 @@ class JobQueue:
             )
         """)
 
+        # Migration: add warning_message column if it doesn't exist (v0.3.4)
+        try:
+            self._conn.execute("SELECT warning_message FROM jobs LIMIT 1")
+        except sqlite3.OperationalError:
+            logger.info("Migrating database: adding warning_message column")
+            self._conn.execute("ALTER TABLE jobs ADD COLUMN warning_message TEXT")
+
         # Create index for efficient queries
         self._conn.execute("""
             CREATE INDEX IF NOT EXISTS idx_jobs_status ON jobs(status)

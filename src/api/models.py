@@ -576,3 +576,16 @@ class BrowseResponse(BaseModel):
     parent_path: Optional[str]
     root_media: str
     entries: list[BrowseEntry]
+
+
+# =============================================================================
+# Configuration Models (for Settings API)
+# =============================================================================
+
+class ConfigUpdateRequest(BaseModel):
+    """Partial config update. Only provided sections are updated."""
+    ffmpeg: Optional[dict] = None
+    daemon: Optional[dict] = None
+    storage: Optional[dict] = None
+    logging: Optional[dict] = None
+    validation: Optional[dict] = None

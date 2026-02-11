@@ -40,6 +40,7 @@ Transcodr is a local‑first video transcoding platform for creators and small s
 - Architecture: system design and component overview. See docs/architecture.md
 - Concurrency tuning: maximize throughput safely. See docs/concurrency-tuning.md
 - Roadmap: planned features and direction. See docs/roadmap.md
+- Changelog: version history and release notes. See docs/CHANGELOG.md
 
 ## License
 

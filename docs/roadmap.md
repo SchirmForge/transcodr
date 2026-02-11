@@ -1,6 +1,6 @@
 # transcodr Roadmap
 
-## Current Version: 0.3.3
+## Current Version: 0.3.5
 
 ## Use Cases Overview
 
@@ -182,6 +182,54 @@
 
 ---
 
+## Completed Features (v0.3.4)
+
+### Extension Mismatch Handling
+- [x] `on_extension_mismatch` config option for replace mode (rename, reject, keep)
+- [x] `rename` (default): correct extension, delete original, complete with warning
+- [x] `reject`: fail job with descriptive error
+- [x] `keep`: keep source extension with wrong content, complete with warning
+
+### Warning Job Status
+- [x] New `warning` job status for non-fatal issues
+- [x] `warning_message` field on jobs
+- [x] Web UI: amber badges, warning message display, filter, "Clear Warning" button
+- [x] `DELETE /api/queue/warning` endpoint
+
+### Web UI Improvements
+- [x] Dynamic version display in sidebar (from daemon API)
+- [x] Refresh button on file browser toolbar
+- [x] Sidebar navigation renamed "Configuration" to "Encoding Rules"
+
+---
+
+## Completed Features (v0.3.5)
+
+### Docker Support
+- [x] Multi-stage Dockerfile (Node for WebUI build, Python for runtime)
+- [x] `docker-compose.yml` with config/media/temp volume mounts
+- [x] GPU passthrough sections (VAAPI, NVIDIA)
+- [x] Health check on `/api/health`
+- [x] Docker documentation (`docker/README.md`)
+
+### Configuration Environment Variable
+- [x] `TRANSCODR_CONFIG_DIR` env var overrides default config directory
+- [x] All config paths (config.yaml, profiles, watchfolders, jobs.db) derive from it
+- [x] Falls back to `~/.config/transcodr` when not set
+
+### Settings API
+- [x] `GET /api/config` — read full daemon configuration
+- [x] `PUT /api/config` — partial update, validate, save to disk, reload live
+
+### Settings Web UI
+- [x] Storage settings page (root media, temp dir, backup, free space, mismatch policy)
+- [x] Encoding settings page (FFmpeg path, hardware accel, duration tolerance)
+- [x] Daemon settings page (host, port, max concurrent jobs)
+- [x] Logging settings page (level, directory, rotation, per-job logs)
+- [x] Save/Cancel with dirty state tracking and feedback messages
+
+---
+
 ## Planned Features
 
 ### Version 0.2.4: Subtitles Management
@@ -258,11 +306,12 @@
 - Distributed encoding (0.4.2)
 - Video filters (0.4.3)
 
-### v0.3 (Current - v0.3.3 Released)
+### v0.3 (Current - v0.3.5 Released)
 - ✅ Web UI basic layout (0.3.1) - **DONE**
 - ✅ Bug fixes (0.3.2) - **DONE**
 - ✅ Manual encoding with web UI (0.3.3) - **DONE**
-- MTS stream-copy artifact fixes (0.3.4)
+- ✅ Extension mismatch handling + warning status (0.3.4) - **DONE**
+- ✅ Docker preparation + settings UI (0.3.5) - **DONE**
 
 ### v0.2 (v0.2.3 Released)
 - ✅ Watch folder improvements (0.2.1) - **DONE**
@@ -272,7 +321,19 @@
 - Notifications (0.2.5)
 - Audio file encoding (0.2.6)
 
-### v0.3.3 (Current)
+### v0.3.5 (Current)
+- Docker support: Dockerfile, docker-compose.yml, GPU passthrough
+- `TRANSCODR_CONFIG_DIR` environment variable for config directory override
+- Settings API: `GET /api/config`, `PUT /api/config`
+- Settings Web UI: Storage, Encoding, Daemon, Logging pages
+
+### v0.3.4
+- Extension mismatch handling for replace mode (`on_extension_mismatch` config)
+- Warning job status with `warning_message` field
+- Web UI: amber warning display, dynamic version, file browser refresh button
+- `DELETE /api/queue/warning` endpoint
+
+### v0.3.3
 - Create Job page with file browser, profile selector, and multi-step form
 - File browser API endpoint (`GET /api/browse`)
 - `use_temp_folder` and `copy_source_to_temp` options for encoding jobs

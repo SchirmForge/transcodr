@@ -26,7 +26,7 @@ Get daemon status and queue information.
 ```json
 {
   "running": true,
-  "version": "0.3.3",
+  "version": "0.3.4",
   "uptime_seconds": 3600.5,
   "queue": {
     "total_jobs": 15,
@@ -111,7 +111,7 @@ List all jobs.
 **Query Parameters:**
 | Parameter | Type | Description |
 |-----------|------|-------------|
-| `status` | string | Filter by status (pending, running, completed, failed) |
+| `status` | string | Filter by status (pending, running, completed, warning, failed) |
 | `limit` | int | Maximum number of jobs to return |
 | `offset` | int | Number of jobs to skip |
 
@@ -227,7 +227,8 @@ Get job details by ID.
   "completed_at": "2025-01-15T10:45:00Z",
   "source_size_bytes": 5000000000,
   "output_size_bytes": 2000000000,
-  "error_message": null
+  "error_message": null,
+  "warning_message": null
 }
 ```
 
@@ -476,6 +477,18 @@ Clear failed jobs from history.
 {
   "success": true,
   "message": "Cleared 3 failed jobs"
+}
+```
+
+### DELETE /api/queue/warning
+
+Clear warning jobs (completed with warnings) from history.
+
+**Response:**
+```json
+{
+  "success": true,
+  "message": "Cleared 2 warning jobs"
 }
 ```
 

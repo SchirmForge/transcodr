@@ -14,6 +14,7 @@ from fastapi.staticfiles import StaticFiles
 from .models import (
     BrowseEntry,
     BrowseResponse,
+    ConfigUpdateRequest,
     DaemonStatus,
     EncodingRequest,
     JobInfo,
@@ -26,6 +27,7 @@ from .models import (
     WatchFolderInfo,
     process_encoding_request,
 )
+from ..config.schema import Config
 from .queue import JobQueue
 from ..watcher import WatchfolderService
 from ..config.manager import ConfigManager, expand_path
@@ -40,7 +42,7 @@ _job_queue: Optional[JobQueue] = None
 _watchfolder_service: Optional[WatchfolderService] = None
 _config = None
 
-VERSION = "0.3.4"
+VERSION = "0.3.5"
 
 
 @asynccontextmanager
@@ -56,7 +58,7 @@ async def lifespan(app: FastAPI):
 
     # Load configuration
     _config = ConfigManager.load_config()
-    logger.info(f"Configuration loaded from: {ConfigManager.DEFAULT_CONFIG_PATH}")
+    logger.info(f"Configuration loaded from: {ConfigManager.get_default_config_path()}")
 
     # Validate configuration
     errors, warnings = ConfigManager.validate_config(_config)
@@ -152,7 +154,7 @@ async def get_status():
         queue=queue_info,
         watch_folders=[],  # Config-based watchfolders are listed via /watchfolders endpoint
         hardware=hardware,
-        config_path=str(ConfigManager.DEFAULT_CONFIG_PATH),
+        config_path=str(ConfigManager.get_default_config_path()),
     )
 
 
@@ -422,6 +424,108 @@ async def clear_warning_jobs():
 # Admin Endpoints
 # =============================================================================
 
+@api_router.get("/config", tags=["Admin"])
+async def get_config():
+    """Get current daemon configuration."""
+    global _config
+
+    return {
+        "ffmpeg": {
+            "binary_path": _config.ffmpeg.binary_path,
+            "hardware_accel": _config.ffmpeg.hardware_accel,
+        },
+        "daemon": {
+            "host": _config.daemon.host,
+            "port": _config.daemon.port,
+            "max_concurrent_jobs": _config.daemon.max_concurrent_jobs,
+        },
+        "storage": {
+            "temp_dir": str(_config.storage.temp_dir),
+            "backup_originals": _config.storage.backup_originals,
+            "backup_dir": _config.storage.backup_dir,
+            "min_free_space_gb": _config.storage.min_free_space_gb,
+            "root_media": str(_config.storage.root_media),
+            "profile_name_separator": _config.storage.profile_name_separator,
+            "on_extension_mismatch": _config.storage.on_extension_mismatch.value,
+        },
+        "logging": {
+            "level": _config.logging.level,
+            "dir": str(_config.logging.dir) if _config.logging.dir else None,
+            "rotation": _config.logging.rotation,
+            "per_job_logs": _config.logging.per_job_logs,
+        },
+        "validation": {
+            "duration_tolerance": _config.validation.duration_tolerance,
+        },
+    }
+
+
+@api_router.put("/config", tags=["Admin"])
+async def update_config(update: ConfigUpdateRequest):
+    """
+    Update daemon configuration. Writes to config.yaml and reloads.
+    Only provided sections are updated; omitted sections are unchanged.
+    """
+    global _config
+
+    config_path = ConfigManager.get_default_config_path()
+
+    # Build merged config dict from current config
+    current = _config.model_dump(mode="python")
+
+    # Merge updates into current config
+    if update.ffmpeg:
+        current.setdefault("ffmpeg", {}).update(update.ffmpeg)
+    if update.daemon:
+        current.setdefault("daemon", {}).update(update.daemon)
+    if update.storage:
+        current.setdefault("storage", {}).update(update.storage)
+    if update.logging:
+        current.setdefault("logging", {}).update(update.logging)
+    if update.validation:
+        current.setdefault("validation", {}).update(update.validation)
+
+    # Validate by constructing Config (raises on invalid values)
+    try:
+        new_config = Config(**current)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Invalid configuration: {e}")
+
+    # Validate runtime (paths exist, etc.)
+    errors, config_warnings = ConfigManager.validate_config(new_config)
+    if errors:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Config validation failed: {'; '.join(errors)}"
+        )
+
+    # Check if host/port changed — warn that restart is needed
+    response_warnings = list(config_warnings)
+    if (new_config.daemon.host != _config.daemon.host or
+            new_config.daemon.port != _config.daemon.port):
+        response_warnings.append(
+            "Host/port changes require a daemon restart to take effect."
+        )
+
+    # Save to disk
+    ConfigManager.save_config(new_config, config_path)
+
+    # Apply to running daemon
+    _config = new_config
+    if _job_queue:
+        _job_queue.set_max_concurrent(_config.daemon.max_concurrent_jobs)
+        _job_queue.set_root_media(_config.storage.root_media)
+        _job_queue.clear_profile_cache()
+
+    logger.info("Configuration updated and saved via API")
+
+    return {
+        "success": True,
+        "message": "Configuration saved and reloaded",
+        "warnings": response_warnings,
+    }
+
+
 @api_router.post("/reload", tags=["Admin"])
 async def reload_config():
     """
@@ -437,7 +541,7 @@ async def reload_config():
     try:
         # Reload main config
         _config = ConfigManager.load_config()
-        logger.info(f"Configuration reloaded from: {ConfigManager.DEFAULT_CONFIG_PATH}")
+        logger.info(f"Configuration reloaded from: {ConfigManager.get_default_config_path()}")
 
         # Validate configuration
         errors, warnings = ConfigManager.validate_config(_config)
@@ -472,7 +576,7 @@ async def reload_config():
         return {
             "success": True,
             "message": "Configuration reloaded successfully",
-            "config_path": str(ConfigManager.DEFAULT_CONFIG_PATH),
+            "config_path": str(ConfigManager.get_default_config_path()),
             "config": {
                 "daemon": {
                     "host": _config.daemon.host,

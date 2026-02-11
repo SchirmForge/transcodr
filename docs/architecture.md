@@ -547,8 +547,12 @@ container: mkv
      │
      v
 ┌───────────┐
-│ COMPLETED │  Success
+│ COMPLETED │  Success (no warnings)
 └───────────┘
+
+┌───────────┐
+│  WARNING  │  Completed with non-fatal warnings
+└───────────┘  (e.g., extension mismatch in replace mode)
 
      ┌───────┐
      │RETRYING│  Failed jobs can be retried
@@ -573,6 +577,7 @@ class JobState(str, Enum):
     VALIDATING_OUTPUT = "validating_output"
     REPLACING = "replacing"
     COMPLETED = "completed"
+    WARNING = "warning"
     FAILED = "failed"
     CANCELLED = "cancelled"
     RETRYING = "retrying"
@@ -587,6 +592,7 @@ class Job(BaseModel):
     started_at: datetime | None = None
     completed_at: datetime | None = None
     error_message: str | None = None
+    warning_message: str | None = None
     retry_count: int = 0
 
     # Progress tracking

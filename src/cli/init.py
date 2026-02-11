@@ -22,7 +22,7 @@ def main():
     print()
 
     # Check if config already exists
-    config_file = ConfigManager.DEFAULT_CONFIG_PATH
+    config_file = ConfigManager.get_default_config_path()
     profiles_dir = ConfigManager.get_profiles_dir()
 
     if config_file.exists():

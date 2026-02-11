@@ -1,5 +1,6 @@
 """Configuration schema using Pydantic."""
 
+import os
 from enum import Enum
 from pathlib import Path
 from typing import Optional
@@ -149,7 +150,10 @@ class Config(BaseModel):
     )
 
     def get_config_dir(self) -> Path:
-        """Get configuration directory."""
+        """Get configuration directory. Supports TRANSCODR_CONFIG_DIR env var."""
+        env_dir = os.environ.get("TRANSCODR_CONFIG_DIR")
+        if env_dir:
+            return Path(env_dir)
         return Path.home() / ".config" / "transcodr"
 
     def get_profiles_dir(self) -> Path:

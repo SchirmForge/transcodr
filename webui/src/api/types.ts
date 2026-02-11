@@ -177,3 +177,40 @@ export interface ActionResponse {
   success: boolean
   message: string
 }
+
+// Configuration types - matches GET /api/config response
+export interface TranscodrConfig {
+  ffmpeg: {
+    binary_path: string
+    hardware_accel: string
+  }
+  daemon: {
+    host: string
+    port: number
+    max_concurrent_jobs: number
+  }
+  storage: {
+    temp_dir: string
+    backup_originals: boolean
+    backup_dir: string
+    min_free_space_gb: number
+    root_media: string
+    profile_name_separator: string
+    on_extension_mismatch: string
+  }
+  logging: {
+    level: string
+    dir: string | null
+    rotation: string
+    per_job_logs: boolean
+  }
+  validation: {
+    duration_tolerance: number
+  }
+}
+
+export interface ConfigUpdateResponse {
+  success: boolean
+  message: string
+  warnings: string[]
+}

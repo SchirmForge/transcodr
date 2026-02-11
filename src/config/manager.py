@@ -79,7 +79,10 @@ class ConfigManager:
     and providing default configuration.
     """
 
-    DEFAULT_CONFIG_PATH = Path.home() / ".config" / "transcodr" / "config.yaml"
+    @staticmethod
+    def get_default_config_path() -> Path:
+        """Get default config file path. Supports TRANSCODR_CONFIG_DIR env var."""
+        return ConfigManager.get_config_dir() / "config.yaml"
 
     @staticmethod
     def get_default_config() -> Config:
@@ -107,7 +110,7 @@ class ConfigManager:
             ValueError: If config file is invalid
         """
         if config_path is None:
-            config_path = ConfigManager.DEFAULT_CONFIG_PATH
+            config_path = ConfigManager.get_default_config_path()
 
         if not config_path.exists():
             logger.warning(f"Config file not found: {config_path}")
@@ -157,7 +160,7 @@ class ConfigManager:
             config_path: Path to save to (default: ~/.config/videotranscode/config.yaml)
         """
         if config_path is None:
-            config_path = ConfigManager.DEFAULT_CONFIG_PATH
+            config_path = ConfigManager.get_default_config_path()
 
         # Create config directory if it doesn't exist
         config_path.parent.mkdir(parents=True, exist_ok=True)
@@ -200,7 +203,7 @@ class ConfigManager:
             Path to created config file
         """
         if config_path is None:
-            config_path = ConfigManager.DEFAULT_CONFIG_PATH
+            config_path = ConfigManager.get_default_config_path()
 
         config_path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -303,7 +306,10 @@ hot_folders: []
 
     @staticmethod
     def get_config_dir() -> Path:
-        """Get configuration directory path."""
+        """Get configuration directory path. Supports TRANSCODR_CONFIG_DIR env var."""
+        env_dir = os.environ.get("TRANSCODR_CONFIG_DIR")
+        if env_dir:
+            return Path(env_dir)
         return Path.home() / ".config" / "transcodr"
 
     @staticmethod
@@ -405,7 +411,7 @@ hot_folders: []
             }
         """
         config_dir = ConfigManager.get_config_dir()
-        config_file = ConfigManager.DEFAULT_CONFIG_PATH
+        config_file = ConfigManager.get_default_config_path()
         profiles_dir = ConfigManager.get_profiles_dir()
 
         # Create directory structure

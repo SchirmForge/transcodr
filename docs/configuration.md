@@ -97,6 +97,7 @@ storage:
   backup_originals: true           # Create backup of original files
   backup_dir: ./.originals         # Backup directory (relative or absolute)
   min_free_space_gb: 10            # Minimum free space required (GB)
+  on_extension_mismatch: rename    # rename (use correct ext), reject (fail job), keep (keep source ext)
   root_media: ~/Videos             # Base path for  placeholder (supports ~ and $USER)
 
 # Logging settings
@@ -141,6 +142,10 @@ logging:
   - `./.originals` - Relative to source file (default)
   - `/path/to/backups` - Absolute path
 - **min_free_space_gb**: Minimum free space required to start encoding
+- **on_extension_mismatch**: What to do when source extension differs from profile container in replace mode
+  - `rename` (default) - Use correct extension, delete original, complete with warning
+  - `reject` - Fail the job with descriptive error
+  - `keep` - Keep source extension (wrong container content), complete with warning
 - **root_media**: Base path for `` placeholder
   - Default: `~/Videos`
   - Supports tilde expansion (`~`)
@@ -247,17 +252,45 @@ print('Built-in profiles updated')
 
 ## Environment Variables
 
-You can override the configuration directory location:
+### TRANSCODR_CONFIG_DIR
+
+Override the default configuration directory (`~/.config/transcodr`) by setting the `TRANSCODR_CONFIG_DIR` environment variable. When set, all config paths — `config.yaml`, `profiles/`, `watchfolders/`, and `jobs.db` — derive from this directory.
 
 ```bash
 # Use custom config directory
-export transcodr_CONFIG_DIR=/path/to/custom/config
+export TRANSCODR_CONFIG_DIR=/path/to/custom/config
 
-# Run with custom config
-python src/cli/init.py
+# Run daemon with custom config location
+python -m src.daemon
+
+# Or set inline
+TRANSCODR_CONFIG_DIR=/opt/transcodr/config python -m src.daemon
 ```
 
-(Note: This feature is planned but not yet implemented)
+This is essential for Docker deployments where config is typically mounted at `/config`:
+
+```yaml
+# docker-compose.yml
+environment:
+  - TRANSCODR_CONFIG_DIR=/config
+volumes:
+  - ./config:/config
+```
+
+When `TRANSCODR_CONFIG_DIR` is not set, the default `~/.config/transcodr` is used. The CLI `--config` flag still takes precedence for the config file path when specified.
+
+## Settings Web UI
+
+Starting with v0.3.5, all configuration sections can be edited directly from the Web UI under **Settings**:
+
+- **Storage** — root media, temp directory, backup options, free space, extension mismatch policy, profile name separator
+- **Encoding** — FFmpeg binary path, hardware acceleration selector, duration tolerance, detected hardware display
+- **Daemon** — host, port, max concurrent jobs (changes require daemon restart)
+- **Logging** — log level, log directory, rotation policy, per-job logs toggle
+
+Each page has Save/Cancel buttons with dirty state tracking. Changes are validated, written to `config.yaml`, and reloaded live (except host/port changes which require a restart).
+
+You can also read and update configuration programmatically via the Settings API endpoints (`GET /api/config` and `PUT /api/config`). See [API Reference](api-reference.md#configuration-endpoints) for details.
 
 ## Troubleshooting
 

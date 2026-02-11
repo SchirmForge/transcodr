@@ -24,8 +24,8 @@ const navigation: NavSection[] = [
     ],
   },
   {
-    id: 'configuration',
-    title: 'Configuration',
+    id: 'encoding-rules',
+    title: 'Encoding Rules',
     items: [
       { label: 'Watch Folders', to: '/encoding-rules/watchfolders' },
       { label: 'Profiles', to: '/encoding-rules/profiles' },
@@ -36,6 +36,10 @@ const navigation: NavSection[] = [
     title: 'Settings',
     items: [
       { label: 'General', to: '/settings/general' },
+      { label: 'Storage', to: '/settings/storage' },
+      { label: 'Encoding', to: '/settings/encoding' },
+      { label: 'Daemon', to: '/settings/daemon' },
+      { label: 'Logging', to: '/settings/logging' },
     ],
   },
   {
@@ -122,7 +126,7 @@ export function Sidebar() {
 
               <div
                 className={`overflow-hidden transition-all duration-200 ${
-                  isExpanded ? 'max-h-40 opacity-100' : 'max-h-0 opacity-0'
+                  isExpanded ? 'max-h-60 opacity-100' : 'max-h-0 opacity-0'
                 }`}
               >
                 <ul className="mt-1 ml-3 space-y-1 border-l border-graphite-400 dark:border-graphite-800 pl-3">

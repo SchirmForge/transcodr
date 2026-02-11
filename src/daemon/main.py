@@ -78,12 +78,12 @@ Examples:
     logger = logging.getLogger(__name__)
 
     # Ensure configuration is initialized
-    if not ConfigManager.DEFAULT_CONFIG_PATH.exists():
+    if not ConfigManager.get_default_config_path().exists():
         logger.info("Configuration not found, initializing...")
         ConfigManager.initialize()
 
     # Load configuration with error handling
-    config_path = args.config or ConfigManager.DEFAULT_CONFIG_PATH
+    config_path = args.config or ConfigManager.get_default_config_path()
     try:
         config = ConfigManager.load_config(args.config)
     except ValueError as e:
@@ -134,7 +134,7 @@ Examples:
     print(f"  Debug:             {args.debug}")
     print()
     print("CONFIGURATION:")
-    print(f"  Config file:       {ConfigManager.DEFAULT_CONFIG_PATH}")
+    print(f"  Config file:       {ConfigManager.get_default_config_path()}")
     print(f"  Profiles dir:      {ConfigManager.get_profiles_dir()}")
     print(f"  Watchfolders dir:  {ConfigManager.get_watchfolders_config_dir()}")
     print()
