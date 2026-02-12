@@ -40,7 +40,7 @@ class WatchfolderService:
     async def start(self):
         """Load watchfolder configs and start watchers."""
         from ..config.manager import ConfigManager
-        from ..profiles.manager import ProfileManager
+        from ..profiles.store import get_profile_manager
 
         # Load main config to get root_media setting
         main_config = ConfigManager.load_config()
@@ -50,7 +50,7 @@ class WatchfolderService:
         logger.info(f"Loaded {len(configs)} watchfolder configuration(s)")
 
         # Create profile manager for validation
-        profile_manager = ProfileManager()
+        profile_manager = get_profile_manager()
         self._validated_profile_destinations.clear()  # Reset on start/reload
 
         for config in configs:

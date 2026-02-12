@@ -22,7 +22,7 @@ from .models import (
 )
 from ..jobs import Job, JobRunner, JobState, OutputMode
 from ..core.errors import ValidationError
-from ..profiles.manager import ProfileManager
+from ..profiles.store import get_profile_manager, clear_profile_cache
 
 logger = logging.getLogger(__name__)
 
@@ -75,7 +75,7 @@ class JobQueue:
         self._active_jobs: dict[str, asyncio.Task] = {}
 
         self._conn: Optional[sqlite3.Connection] = None
-        self._profile_manager = ProfileManager()
+        self._profile_manager = get_profile_manager()
         self._job_runner = JobRunner(
             temp_dir=temp_dir,
             duration_tolerance_seconds=duration_tolerance_seconds,
@@ -169,7 +169,7 @@ class JobQueue:
 
     def clear_profile_cache(self) -> None:
         """Clear the profile cache to force reload from disk on next use."""
-        self._profile_manager.clear_cache()
+        clear_profile_cache()
 
     def _init_db(self):
         """Initialize SQLite database."""

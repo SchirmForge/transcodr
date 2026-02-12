@@ -12,6 +12,7 @@ from src.core.replace import SafeReplacer
 from src.core.hardware import HardwareCapabilities
 from src.core.errors import ValidationError, EncodingError, ReplacementError
 from src.profiles.manager import ProfileManager
+from src.profiles.store import get_profile_manager
 from src.api.models import WatchfolderContext
 from src.watcher.inotify_watcher import wait_for_file_ready
 from .model import Job, JobState, OutputMode
@@ -58,7 +59,7 @@ class JobRunner:
         """
         self.on_extension_mismatch = on_extension_mismatch
         self.ffmpeg = ffmpeg or FFmpegWrapper()
-        self.profile_manager = profile_manager or ProfileManager()
+        self.profile_manager = profile_manager or get_profile_manager()
         self.probe = ProbeHelper()
 
         self.temp_dir = temp_dir or Path(tempfile.gettempdir()) / "transcodr"
@@ -934,4 +935,3 @@ class JobRunner:
                 logger.info(f"Job completed, source deleted: {source_path.name}")
         except Exception as e:
             logger.error(f"Failed to finalize watchfolder source: {e}")
-

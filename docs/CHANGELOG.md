@@ -38,6 +38,27 @@ All notable changes to Transcodr are documented in this file.
 
 ---
 
+## v0.3.6
+
+### Configuration
+- Default config now loads from `src/config/default-config.yml` instead of inline strings
+- Profiles and watchfolders now respect `TRANSCODR_CONFIG_DIR` (fixes Docker mounts not being used)
+
+### Logging
+- Daemon reconfigures logging after config load so `logging.dir` is honored for file output
+
+### Profiles & Watchfolders
+- Shared profile cache via a single ProfileStore instance (clears on reload across daemon components)
+
+### Web UI
+- Added "Reload Configuration" in Settings > General (calls `/reload`)
+- Added "Refresh" buttons on Profiles and Watchfolders pages (client-side refetch)
+
+### Docker
+- Added `docker/deploy.sh` helper with `--no-cache` and `--help`
+
+---
+
 ## v0.3.4
 
 ### Extension Mismatch Handling

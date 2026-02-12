@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Optional
 import yaml
 
+from src.config.manager import ConfigManager
 from .schema import Profile, VideoSettings, AudioSettings
 
 logger = logging.getLogger(__name__)
@@ -27,7 +28,7 @@ class ProfileManager:
         self.builtin_profile_dir = Path(__file__).parent / "builtin"
 
         if user_profile_dir is None:
-            user_profile_dir = Path.home() / ".config" / "transcodr" / "profiles"
+            user_profile_dir = ConfigManager.get_profiles_dir()
 
         self.user_profile_dir = user_profile_dir
         self._cache: dict[str, Profile] = {}

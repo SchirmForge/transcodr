@@ -1,14 +1,19 @@
+
 services:
   transcodr:
+    image: schirmforge/transcodr:dev
     build:
       context: ..
       dockerfile: docker/Dockerfile
     ports:
       - "8765:8765"
+    user: "1000:1000"      
     volumes:
-      - ~/.config/transcodr:/config          # Config, profiles, watchfolders, jobs.db
-      - ~/Videos/transcodr:/media     # root_media mount — change to your media path
-      - /tmp/transcodr:/temp      # Temp encoding directory
+      - ~/.config/transcodr:/config    # Config, profiles, watchfolders, jobs.db
+      - ~/Videos/transcodr:/media      # root_media mount 
+      - /tmp/transcodr:/temp           # Temp encoding directory
+      - /tmp/logs:/logs                # Logs folder (you need to set logging.dir to /logs in config.yaml or using the web UI)
+
     environment:
       - TRANSCODR_CONFIG_DIR=/config
     restart: unless-stopped

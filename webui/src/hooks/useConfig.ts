@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { apiClient } from '../api/client'
-import type { TranscodrConfig, ConfigUpdateResponse } from '../api/types'
+import type { TranscodrConfig, ConfigUpdateResponse, ReloadResponse } from '../api/types'
 
 export function useConfig() {
   return useQuery({
@@ -24,6 +24,22 @@ export function useUpdateConfig() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['config'] })
       queryClient.invalidateQueries({ queryKey: ['status'] })
+    },
+  })
+}
+
+export function useReloadConfig() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async (): Promise<ReloadResponse> => {
+      const { data } = await apiClient.post<ReloadResponse>('/reload')
+      return data
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['config'] })
+      queryClient.invalidateQueries({ queryKey: ['status'] })
+      queryClient.invalidateQueries({ queryKey: ['watchfolders'] })
+      queryClient.invalidateQueries({ queryKey: ['profiles'] })
     },
   })
 }

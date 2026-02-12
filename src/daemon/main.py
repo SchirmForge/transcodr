@@ -72,7 +72,7 @@ Examples:
 
     args = parser.parse_args()
 
-    # Setup logging
+    # Setup logging (console-only until config is loaded)
     log_level = "DEBUG" if args.debug else "INFO"
     setup_logging(level=log_level, console=True)
     logger = logging.getLogger(__name__)
@@ -112,6 +112,11 @@ Examples:
         print("Please fix the configuration file and try again.")
         print("=" * 70)
         sys.exit(1)
+
+    # Reconfigure logging now that config is available (enables file logging)
+    log_level = "DEBUG" if args.debug else config.logging.level
+    setup_logging(level=log_level, log_dir=config.logging.dir, console=True)
+    logger = logging.getLogger(__name__)
 
     # Determine host and port
     host = args.host or config.daemon.host

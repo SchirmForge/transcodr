@@ -214,3 +214,8 @@ export interface ConfigUpdateResponse {
   message: string
   warnings: string[]
 }
+
+export interface ReloadResponse {
+  success: boolean
+  message: string
+}

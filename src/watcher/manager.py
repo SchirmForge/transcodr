@@ -20,14 +20,9 @@ class WatchfolderConfigManager:
     """
 
     @staticmethod
-    def get_config_dir() -> Path:
-        """Get watchfolders configuration directory path."""
-        return Path.home() / ".config" / "transcodr" / "watchfolders"
-
-    @staticmethod
     def ensure_config_dir() -> None:
         """Ensure watchfolders configuration directory exists."""
-        config_dir = WatchfolderConfigManager.get_config_dir()
+        config_dir = ConfigManager.get_watchfolders_config_dir()
         config_dir.mkdir(parents=True, exist_ok=True)
         logger.debug(f"Watchfolders config directory: {config_dir}")
 
@@ -42,7 +37,7 @@ class WatchfolderConfigManager:
         Returns:
             List of WatchfolderConfig objects
         """
-        watchfolders_dir = WatchfolderConfigManager.get_config_dir()
+        watchfolders_dir = ConfigManager.get_watchfolders_config_dir()
         configs = []
 
         if not watchfolders_dir.exists():

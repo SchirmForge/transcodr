@@ -32,7 +32,7 @@ from .queue import JobQueue
 from ..watcher import WatchfolderService
 from ..config.manager import ConfigManager, expand_path
 from ..core.hardware import HardwareCapabilities
-from ..profiles.manager import ProfileManager
+from ..profiles.store import get_profile_manager
 
 logger = logging.getLogger(__name__)
 
@@ -653,7 +653,7 @@ async def purge_database(
 @api_router.get("/profiles", tags=["Profiles"])
 async def list_profiles():
     """List all available encoding profiles."""
-    pm = ProfileManager()
+    pm = get_profile_manager()
     profiles = pm.list_profiles()
 
     result = []
@@ -670,7 +670,7 @@ async def list_profiles():
 @api_router.get("/profiles/{name}", tags=["Profiles"])
 async def get_profile(name: str):
     """Get profile details."""
-    pm = ProfileManager()
+    pm = get_profile_manager()
     if not pm.profile_exists(name):
         raise HTTPException(status_code=404, detail=f"Profile not found: {name}")
 
@@ -691,7 +691,7 @@ async def delete_profile(
     Cannot delete built-in profiles.
     Requires confirm=true query parameter.
     """
-    pm = ProfileManager()
+    pm = get_profile_manager()
     if not pm.profile_exists(name):
         raise HTTPException(status_code=404, detail=f"Profile not found: {name}")
 

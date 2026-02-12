@@ -26,6 +26,10 @@ Transcodr is a local‑first video transcoding platform for creators and small s
 
 ## Get Started
 
+- Recommended for Docker: run the helper script from the repo root:
+  - `./docker/deploy.sh` (rebuilds and restarts the stack)
+  - `./docker/deploy.sh --no-cache` (rebuild without cache)
+
 - Quick install: See **[prerequisites](docs/configuration.md#prerequisites)**
 - Full install and configuration: See **[configuration](docs/configuration.md)**
 

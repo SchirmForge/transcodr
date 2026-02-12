@@ -52,7 +52,7 @@ function ProfileCard({ profile }: { profile: ProfileInfo }) {
 }
 
 export function ProfilesPage() {
-  const { data: profiles, isLoading, isError } = useProfiles()
+  const { data: profiles, isLoading, isError, isFetching, refetch } = useProfiles()
 
   if (isLoading) {
     return (
@@ -81,8 +81,19 @@ export function ProfilesPage() {
 
   return (
     <div>
-      <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100 mb-4">Profiles</h1>
-      <p className="text-gray-600 dark:text-gray-400 mb-4">Encoding profiles available for jobs.</p>
+      <div className="flex items-start justify-between gap-4 mb-4">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">Profiles</h1>
+          <p className="text-gray-600 dark:text-gray-400">Encoding profiles available for jobs.</p>
+        </div>
+        <button
+          onClick={() => refetch()}
+          disabled={isFetching}
+          className="px-4 py-2 bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-lg text-sm font-medium hover:bg-gray-300 dark:hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          {isFetching ? 'Refreshing…' : 'Refresh'}
+        </button>
+      </div>
 
       {profiles && profiles.length > 0 ? (
         <div className="space-y-6">
