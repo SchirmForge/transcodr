@@ -40,7 +40,7 @@ logs/
 *.db
 
 # Local stuff
-config/
+/config/
 .env.local
 tmp/
 temp/

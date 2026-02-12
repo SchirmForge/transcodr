@@ -207,45 +207,16 @@ class ConfigManager:
 
         config_path.parent.mkdir(parents=True, exist_ok=True)
 
-        # Create config with helpful comments
-        config_content = """# Transcodr Configuration
+        template_path = Path(__file__).with_name("default-config.yml")
+        try:
+            config_content = template_path.read_text(encoding="utf-8")
+        except FileNotFoundError as exc:
+            raise FileNotFoundError(
+                f"Default config template not found: {template_path}"
+            ) from exc
 
-# FFmpeg settings
-ffmpeg:
-  binary_path: ffmpeg              # Path to FFmpeg binary
-  hardware_accel: auto             # Hardware acceleration: auto|vaapi|nvenc|qsv|none
-
-# Daemon settings
-daemon:
-  host: 127.0.0.1                  # API bind address (127.0.0.1 for local only)
-  port: 8765                       # API port
-  max_concurrent_jobs: 1           # Maximum concurrent encoding jobs
-  pid_file: null                   # PID file path (null for none)
-
-# Storage settings
-storage:
-  temp_dir: /tmp/transcodr    # Temporary directory for encoding
-  backup_originals: true           # Create backup of original files
-  backup_dir: ./.originals         # Backup directory (relative or absolute)
-  min_free_space_gb: 10            # Minimum free space required (GB)
-  root_media: ~/Videos             # Base path for $root_media placeholder (supports ~ and $USER)
-  on_extension_mismatch: rename    # rename (use correct ext), reject (fail job), keep (keep source ext)
-
-# Logging settings
-logging:
-  level: INFO                      # Log level: DEBUG|INFO|WARNING|ERROR|CRITICAL
-  dir: null                        # Log directory (null for no file logging)
-  rotation: daily                  # Log rotation policy
-  per_job_logs: true               # Create separate log file per job
-
-# Hot folder monitoring (optional)
-hot_folders: []
-# Example hot folder:
-# - path: /media/downloads
-#   profile: x265-main
-#   min_age_seconds: 300           # Wait 5 minutes before processing
-#   recursive: true                # Monitor subdirectories
-"""
+        if not config_content.endswith("\n"):
+            config_content += "\n"
 
         with open(config_path, "w") as f:
             f.write(config_content)

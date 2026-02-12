@@ -232,47 +232,36 @@
 
 ## Planned Features
 
-### Version 0.2.4: Subtitles Management
+### Version 0.4: Subtitles Management
 - [ ] Subtitles are never burned in (always separate streams)
 - [ ] Auto-detect external subtitle files (`.srt`, `.ass`, `.ssa`, `.sub`, `.idx`, `.vtt`)
 - [ ] Language detection from filename (`.en.srt`, `.english.srt`, etc.)
 - [ ] `auto_embed_subtitles` option (default: true)
 - [ ] Copy/move other non-video files when preserving structure (nfo/jpg/txt/etc.)
 
-### Version 0.2.5: Notifications
+### Version 0.4: Notifications
 - [ ] Event types: job complete, batch complete, queue empty, error alerts
 - [ ] Channels: Email, Webhook, Desktop, Pushover, Gotify, ntfy
 - [ ] Configurable notification payloads and per-channel settings
 
-### Version 0.2.6: Audio File Encoding
+### Version 0.4: Audio File Encoding
 - [ ] Lossless audio formats: FLAC, WAV, ALAC, APE, WavPack, DSD
 - [ ] Audio-specific encoding profiles
 
-### Version 0.3: Web UI (**DONE** - v0.3.3)
-- [x] Left-nav layout with Jobs/Configuration/Settings/System
-- [x] Jobs activity + history views with filters
-- [x] Create Job page with file browser and profile selector
-- [x] Watch folder status list
-- [x] Profile display with card-based UI
-- [x] System status with hardware and queue info
-- [x] React 19 + Vite + TypeScript + Tailwind CSS 4 stack
-- [x] Daemon API integration with React Query polling
-- [x] SPA served directly from daemon
-
-### Version 0.4.1: Video Analysis Profiles
+### Version 0.4: Video Analysis Profiles
 - [ ] New `analysis` profile type with deterministic + perceptual phases
 - [ ] Technical heuristics (bpp, bitrate/resolution mismatch, re-encode signals)
 - [ ] Perceptual artifact scoring (blocking, banding, blur, ringing, temporal)
 - [ ] Profile auto-selection: AV1 vs x265 vs keep-as-is
 
-### Version 0.4.2: Distributed Encoding
+### Version 0.5: Distributed Encoding
 - [ ] Controller/worker architecture (local, LAN, remote)
 - [ ] Job distribution strategies (round-robin, capability, load, priority)
 - [ ] Worker registration + heartbeat monitoring
 - [ ] Remote transfer workflow (rsync/sftp/scp)
 - [ ] Phased rollout: local -> LAN -> remote -> auto-discovery
 
-### Version 0.4.3: Video Filters
+### Version 0.5: Video Filters
 - [ ] Profile schema for filter configuration (scale, crop, deinterlace, etc.)
 - [ ] Filter-chain generation with ordering rules
 - [ ] Preset filter profiles (1080p/720p, deinterlace-only, clean-archive)
@@ -288,14 +277,13 @@
 
 ## Open Bugs / Risks
 
-- Validate file duration for extract profiles; only create jobs that fit
-- When the runner throws an exception, mark file as `.failed` (not `.processing`)
-- Catch and log runner exceptions consistently
-- Disallow replace + disable_temp combo for multi-profile runs; enforce in runner
-- Client job names should not include `.processing`
-- Avoid 60s fixed timeout when waiting for temp copy state
+- Validate file duration for extract profiles; only create jobs that fit - fixed
+- When the runner throws an exception, mark file as `.failed` (not `.processing`) - fixed
+- Catch and log runner exceptions consistently - in progress
+- Disallow replace + disable_temp combo for multi-profile runs; enforce in runner - fixed - to be enforced also on manual creation webUI
+- Client job names should not include `.processing` - fixed
+- Avoid 60s fixed timeout when waiting for temp copy state - fixed - use ioctl now, this timeout method is still used as fallback method for network share
 - Add input/output FFmpeg args to fix `.mts` stream-copy artifacts
-- Add audio stream selection options (first-only vs all)
 
 ---
 

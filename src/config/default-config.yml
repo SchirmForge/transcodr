@@ -1,0 +1,37 @@
+# Transcodr Configuration
+
+# FFmpeg settings
+ffmpeg:
+  binary_path: ffmpeg              # Path to FFmpeg binary
+  hardware_accel: auto             # Hardware acceleration: auto|vaapi|nvenc|qsv|none
+
+# Daemon settings
+daemon:
+  host: 127.0.0.1                  # API bind address (127.0.0.1 for local only)
+  port: 8765                       # API port
+  max_concurrent_jobs: 1           # Maximum concurrent encoding jobs
+  pid_file: null                   # PID file path (null for none)
+
+# Storage settings
+storage:
+  temp_dir: /tmp/transcodr    # Temporary directory for encoding
+  backup_originals: true           # Create backup of original files
+  backup_dir: ./.originals         # Backup directory (relative or absolute)
+  min_free_space_gb: 10            # Minimum free space required (GB)
+  root_media: ~/Videos             # Base path for $root_media placeholder (supports ~ and $USER)
+  on_extension_mismatch: rename    # rename (use correct ext), reject (fail job), keep (keep source ext)
+
+# Logging settings
+logging:
+  level: INFO                      # Log level: DEBUG|INFO|WARNING|ERROR|CRITICAL
+  dir: null                        # Log directory (null for no file logging)
+  rotation: daily                  # Log rotation policy
+  per_job_logs: true               # Create separate log file per job
+
+# Hot folder monitoring (optional)
+hot_folders: []
+# Example hot folder:
+# - path: /media/downloads
+#   profile: x265-main
+#   min_age_seconds: 300           # Wait 5 minutes before processing
+#   recursive: true                # Monitor subdirectories
