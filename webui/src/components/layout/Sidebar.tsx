@@ -35,7 +35,7 @@ const navigation: NavSection[] = [
     id: 'settings',
     title: 'Settings',
     items: [
-      { label: 'General', to: '/settings/general' },
+      { label: 'Skin & Status', to: '/settings/general' },
       { label: 'Storage', to: '/settings/storage' },
       { label: 'Encoding', to: '/settings/encoding' },
       { label: 'Daemon', to: '/settings/daemon' },
@@ -96,13 +96,18 @@ export function Sidebar() {
       navigate('/jobs/activity')
       return
     }
+    if (sectionId === 'settings') {
+      setExpandedSection('settings')
+      navigate('/settings/general')
+      return
+    }
     setExpandedSection(prev => prev === sectionId ? null : sectionId)
-  }
+  }  
 
   return (
     <aside className="w-56 bg-graphite-200 dark:bg-graphite-950 text-steel-800 dark:text-steel-100 flex flex-col min-h-screen">
       <div className="p-4">
-        <img src={logoImg} alt="Video Forge" className="w-full" />
+        <img src={logoImg} alt="TransCoDR" className="w-full" />
         <span className="text-xs text-steel-400 block text-center mt-1">{status ? `v${status.version}` : ''}</span>
       </div>
       <nav className="flex-1 p-2 overflow-y-auto">
