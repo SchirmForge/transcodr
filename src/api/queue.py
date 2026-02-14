@@ -101,13 +101,27 @@ class JobQueue:
         self._running = True
         self._init_db()
 
-        # Reset interrupted jobs from previous shutdown to pending for auto-retry
+        # Reset stale active-state jobs from previous daemon lifecycle to pending.
+        # This covers both graceful shutdown (interrupted) and unexpected exits
+        # where rows may remain marked as running.
         cursor = self._conn.execute("""
-            UPDATE jobs SET status = ?, started_at = NULL, progress = 0
-            WHERE status = ?
-        """, (JobStatus.PENDING.value, JobStatus.INTERRUPTED.value))
+            UPDATE jobs
+            SET status = ?,
+                started_at = NULL,
+                progress = 0.0,
+                fps = 0.0,
+                frames_processed = 0,
+                frames_total = 0
+            WHERE status IN (?, ?)
+        """, (
+            JobStatus.PENDING.value,
+            JobStatus.INTERRUPTED.value,
+            JobStatus.RUNNING.value,
+        ))
         if cursor.rowcount > 0:
-            logger.info(f"Reset {cursor.rowcount} interrupted jobs to pending for retry")
+            logger.info(
+                f"Reset {cursor.rowcount} stale active jobs to pending for retry"
+            )
         self._conn.commit()
 
         logger.info(f"Job queue started (max concurrent: {self.max_concurrent})")
@@ -158,9 +172,21 @@ class JobQueue:
         - If decreased: running jobs continue, new jobs wait until under limit
         """
         old_value = self.max_concurrent
+        if old_value == max_concurrent:
+            return
+
+        # Keep thread pool capacity aligned with queue concurrency. Without this,
+        # jobs can be marked running while still waiting in the old executor queue.
+        old_executor = self._executor
+        self._executor = ThreadPoolExecutor(max_workers=max_concurrent)
         self.max_concurrent = max_concurrent
-        if old_value != max_concurrent:
-            logger.info(f"Max concurrent jobs updated: {old_value} -> {max_concurrent}")
+        logger.info(f"Max concurrent jobs updated: {old_value} -> {max_concurrent}")
+
+        # Let existing work on the old executor drain naturally.
+        try:
+            old_executor.shutdown(wait=False, cancel_futures=False)
+        except TypeError:
+            old_executor.shutdown(wait=False)
 
     def set_root_media(self, root_media: Path) -> None:
         """Update the root_media path (for config reload)."""
@@ -869,6 +895,25 @@ class JobQueue:
             return None
 
         async with self._lock:
+            # Watchfolder failures rename the source file to ".failed".
+            # On retry, restore original filename so JobRunner can find input.
+            cursor = self._conn.execute(
+                "SELECT source_path, watchfolder_context FROM jobs WHERE id = ?",
+                (job_id,),
+            )
+            row = cursor.fetchone()
+            if row:
+                source_path = Path(row["source_path"])
+                watchfolder_context = row["watchfolder_context"]
+
+                if watchfolder_context and not source_path.exists():
+                    failed_path = source_path.with_suffix(source_path.suffix + ".failed")
+                    if failed_path.exists():
+                        failed_path.rename(source_path)
+                        logger.info(
+                            f"Restored failed source for retry: {failed_path.name} -> {source_path.name}"
+                        )
+
             self._conn.execute("""
                 UPDATE jobs SET
                     status = ?,

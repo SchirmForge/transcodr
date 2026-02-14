@@ -4,6 +4,7 @@ import { Layout } from './components/layout/Layout'
 import { ActivityPage } from './pages/jobs/ActivityPage'
 import { CreateJobPage } from './pages/jobs/CreateJobPage'
 import { HistoryPage } from './pages/jobs/HistoryPage'
+import { RulesExplained } from './pages/encoding-rules/RulesExplained'
 import { WatchfoldersPage } from './pages/encoding-rules/WatchfoldersPage'
 import { ProfilesPage } from './pages/encoding-rules/ProfilesPage'
 import { GeneralPage } from './pages/settings/GeneralPage'
@@ -33,8 +34,11 @@ function App() {
             <Route path="/jobs/activity" element={<ActivityPage />} />
             <Route path="/jobs/create" element={<CreateJobPage />} />
             <Route path="/jobs/history" element={<HistoryPage />} />
+            <Route path="/encoding-rules" element={<Navigate to="/encoding-rules/rules-explained" replace />} />
+            <Route path="/encoding-rules/rules-explained" element={<RulesExplained />} />
             <Route path="/encoding-rules/watchfolders" element={<WatchfoldersPage />} />
             <Route path="/encoding-rules/profiles" element={<ProfilesPage />} />
+            <Route path="/settings" element={<Navigate to="/settings/general" replace />} />
             <Route path="/settings/general" element={<GeneralPage />} />
             <Route path="/settings/storage" element={<StoragePage />} />
             <Route path="/settings/encoding" element={<EncodingPage />} />

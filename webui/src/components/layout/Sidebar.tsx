@@ -65,8 +65,8 @@ const navigation: NavSection[] = [
 } */
 
 function findActiveSectionId(pathname: string): string | null {
-  if (pathname.startsWith('/jobs')) {
-    return 'jobs'
+  if (pathname.startsWith('/enccoding-rules')) {
+    return 'encoding-rules'
   }
   for (const section of navigation) {
     if (section.items.some(item => pathname.startsWith(item.to))) {
@@ -76,7 +76,7 @@ function findActiveSectionId(pathname: string): string | null {
   return null
 }
 
-export function Sidebar() {
+export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void }) {
   const location = useLocation()
   const navigate = useNavigate()
   const { data: status } = useStatus()
@@ -94,22 +94,51 @@ export function Sidebar() {
     if (sectionId === 'jobs') {
       setExpandedSection('jobs')
       navigate('/jobs/activity')
+      onClose()
       return
     }
     if (sectionId === 'settings') {
       setExpandedSection('settings')
       navigate('/settings/general')
+      onClose()
+      return
+    }
+    if (sectionId === 'encoding-rules') {
+      setExpandedSection('encoding-rules')
+      navigate('/encoding-rules/rules-explained')
+      onClose()
       return
     }
     setExpandedSection(prev => prev === sectionId ? null : sectionId)
   }  
 
   return (
-    <aside className="w-56 bg-graphite-200 dark:bg-graphite-950 text-steel-800 dark:text-steel-100 flex flex-col min-h-screen">
-      <div className="p-4">
-        <img src={logoImg} alt="TransCoDR" className="w-full" />
-        <span className="text-xs text-steel-400 block text-center mt-1">{status ? `v${status.version}` : ''}</span>
+    <>
+      <div
+        className={`fixed inset-0 bg-black/40 z-30 lg:hidden transition-opacity ${
+          open ? 'opacity-100' : 'opacity-0 pointer-events-none'
+        }`}
+        onClick={onClose}
+      />
+      <aside
+        className={`fixed inset-y-0 left-0 z-40 w-56 bg-graphite-200 dark:bg-graphite-950 text-steel-800 dark:text-steel-100 flex flex-col transition-transform lg:static lg:translate-x-0 lg:min-h-screen ${
+          open ? 'translate-x-0' : '-translate-x-full'
+        }`}
+      >
+      <div className="p-4 flex items-center justify-between gap-3">
+        <div className="flex-1">
+          <img src={logoImg} alt="TransCoDR" className="w-full" />
+        </div>
+        <button
+          onClick={onClose}
+          className="lg:hidden ml-2 text-xs px-2 py-1 rounded bg-graphite-300 dark:bg-graphite-800 text-steel-700 dark:text-steel-100"
+        >
+          Close
+        </button>
       </div>
+      <span className="text-xs text-steel-400 block text-center -mt-3 mb-3">
+        {status ? `v${status.version}` : ''}
+      </span>
       <nav className="flex-1 p-2 overflow-y-auto">
         {navigation.map((section) => {
           const isExpanded = expandedSection === section.id
@@ -139,6 +168,7 @@ export function Sidebar() {
                     <li key={item.to}>
                       <NavLink
                         to={item.to}
+                        onClick={onClose}
                         className={({ isActive }) =>
                           `block px-3 py-1.5 rounded text-sm transition-colors ${
                             isActive
@@ -157,6 +187,7 @@ export function Sidebar() {
           )
         })}
       </nav>
-    </aside>
+      </aside>
+    </>
   )
 }

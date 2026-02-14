@@ -1,6 +1,6 @@
 # transcodr Roadmap
 
-## Current Version: 0.3.5
+## Current Version: 0.3.6
 
 ## Use Cases Overview
 

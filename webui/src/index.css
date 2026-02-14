@@ -52,3 +52,109 @@ body {
 #root {
   min-height: 100vh;
 }
+
+.markdown {
+  color: #1f2937;
+}
+
+.dark .markdown {
+  color: #e5e7eb;
+}
+
+.markdown h1 {
+  font-size: 1.5rem;
+  font-weight: 700;
+  margin: 1.5rem 0 0.75rem;
+}
+
+.markdown h2 {
+  font-size: 1.25rem;
+  font-weight: 600;
+  margin: 1.25rem 0 0.5rem;
+}
+
+.markdown h3 {
+  font-size: 1.125rem;
+  font-weight: 600;
+  margin: 1rem 0 0.5rem;
+}
+
+.markdown p {
+  margin: 0.75rem 0;
+  line-height: 1.6;
+  color: inherit;
+}
+
+.markdown ul,
+.markdown ol {
+  margin: 0.75rem 0 0.75rem 1.5rem;
+}
+
+.markdown li {
+  margin: 0.25rem 0;
+}
+
+.markdown a {
+  color: #2563eb;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.dark .markdown a {
+  color: #93c5fd;
+}
+
+.markdown code {
+  font-family: "Geist Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  font-size: 0.9em;
+  padding: 0.1rem 0.3rem;
+  background: rgba(148, 163, 184, 0.2);
+  border-radius: 0.25rem;
+}
+
+.markdown pre {
+  margin: 0.75rem 0;
+  padding: 0.75rem;
+  background: rgba(15, 23, 42, 0.08);
+  border-radius: 0.5rem;
+  overflow: auto;
+}
+
+.dark .markdown pre {
+  background: rgba(148, 163, 184, 0.12);
+}
+
+.markdown pre code {
+  background: transparent;
+  padding: 0;
+}
+
+.markdown table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1rem 0;
+  font-size: 0.95rem;
+}
+
+.markdown th,
+.markdown td {
+  border: 1px solid rgba(148, 163, 184, 0.4);
+  padding: 0.5rem 0.75rem;
+  text-align: left;
+}
+
+.markdown th {
+  background: rgba(148, 163, 184, 0.2);
+  font-weight: 600;
+}
+
+.dark .markdown th {
+  background: rgba(148, 163, 184, 0.25);
+}
+
+.markdown blockquote {
+  margin: 1rem 0;
+  padding: 0.5rem 1rem;
+  border-left: 4px solid rgba(148, 163, 184, 0.6);
+  background: rgba(148, 163, 184, 0.15);
+}
