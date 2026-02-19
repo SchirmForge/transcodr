@@ -249,7 +249,7 @@ class WatchfolderService:
                 "scan_interval": config.scan_interval,
                 "active": False,
                 "paused": False,
-                "error": "; ".join(info["errors"]),
+                "errors": info["errors"],
             }
             if config.watchfolder_type == WatchfolderType.MEDIA:
                 entry["profiles"] = config.profiles
@@ -315,7 +315,7 @@ class WatchfolderService:
                 "scan_interval": config.scan_interval,
                 "active": False,
                 "paused": False,
-                "error": "; ".join(info["errors"]),
+                "errors": info["errors"],
             }
             if config.watchfolder_type == WatchfolderType.MEDIA:
                 entry["profiles"] = config.profiles

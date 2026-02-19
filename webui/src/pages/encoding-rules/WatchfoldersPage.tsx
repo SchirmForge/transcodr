@@ -33,7 +33,7 @@ function WatchfolderCard({
         <div className="flex items-center gap-2 ml-4">
           <span
             className={`px-2 py-1 text-xs font-medium rounded ${
-              folder.error
+              folder.errors?.length
                 ? 'bg-red-100 dark:bg-red-900/50 text-red-800 dark:text-red-300'
                 : folder.paused
                   ? 'bg-yellow-100 dark:bg-yellow-900/50 text-yellow-800 dark:text-yellow-300'
@@ -42,9 +42,9 @@ function WatchfolderCard({
                     : 'bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-300'
             }`}
           >
-            {folder.error ? 'Invalid' : folder.paused ? 'Paused' : folder.active ? 'Active' : 'Inactive'}
+            {folder.errors?.length ? 'Invalid' : folder.paused ? 'Paused' : folder.active ? 'Active' : 'Inactive'}
           </span>
-          {!folder.error && folder.paused ? (
+          {!folder.errors?.length && folder.paused ? (
             <button
               onClick={onResume}
               disabled={isResuming}
@@ -52,7 +52,7 @@ function WatchfolderCard({
             >
               Resume
             </button>
-          ) : !folder.error && folder.active ? (
+          ) : !folder.errors?.length && folder.active ? (
             <button
               onClick={onPause}
               disabled={isPausing}
@@ -64,9 +64,11 @@ function WatchfolderCard({
         </div>
       </div>
 
-      {folder.error && (
+      {folder.errors && folder.errors.length > 0 && (
         <div className="mt-2 p-2 bg-red-50 dark:bg-red-900/20 rounded border border-red-200 dark:border-red-800">
-          <p className="text-xs text-red-600 dark:text-red-400">{folder.error}</p>
+          {folder.errors.map((err, i) => (
+            <p key={i} className="text-xs text-red-600 dark:text-red-400">{err}</p>
+          ))}
         </div>
       )}
 
@@ -138,7 +140,7 @@ const statusOptions = [
 ]
 
 function getWatchfolderStatus(folder: WatchFolderInfo): string {
-  if (folder.error) return 'invalid'
+  if (folder.errors?.length) return 'invalid'
   if (folder.paused) return 'paused'
   if (folder.active) return 'active'
   return 'inactive'

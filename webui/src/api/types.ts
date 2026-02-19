@@ -111,7 +111,7 @@ export interface WatchFolderInfo {
   active: boolean
   paused: boolean
   scan_interval: number
-  error?: string  // set when watchfolder failed validation (missing folder, etc.)
+  errors?: string[]  // set when watchfolder failed validation (missing folder, etc.)
   // Media watcher specific fields (optional for command watchers)
   profiles?: string[]
   destination?: string
