@@ -16,24 +16,31 @@ function WatchfolderCard({
   isPausing: boolean
   isResuming: boolean
 }) {
+  const [expanded, setExpanded] = useState(false)
   const folderName = folder.path.split('/').pop() || folder.path
+  const isInvalid = !!(folder.errors?.length)
   const isMediaWatcher = folder.type === 'media'
 
   return (
-    <div className="p-4 bg-white dark:bg-gray-800 rounded-lg shadow">
-      <div className="flex justify-between items-start mb-2">
-        <div className="min-w-0 flex-1">
-          <h3 className="font-medium text-gray-900 dark:text-gray-100 truncate" title={folder.path}>
-            {folderName}
-          </h3>
-          <p className="text-sm text-gray-500 dark:text-gray-400 truncate" title={folder.path}>
-            {folder.path}
-          </p>
-        </div>
-        <div className="flex items-center gap-2 ml-4">
+    <div className="bg-white dark:bg-gray-800 rounded-lg shadow">
+      {/* Header — always visible */}
+      <div className="flex items-center gap-2 p-4">
+        <button
+          onClick={() => setExpanded(e => !e)}
+          className="shrink-0 w-5 text-center text-gray-400 dark:text-gray-500 hover:text-gray-700 dark:hover:text-gray-200 font-mono text-sm leading-none"
+          title={expanded ? 'Collapse' : 'Expand'}
+        >
+          {expanded ? '−' : '+'}
+        </button>
+
+        <h3 className="font-medium text-gray-900 dark:text-gray-100 truncate flex-1 min-w-0" title={folder.path}>
+          {folderName}
+        </h3>
+
+        <div className="flex items-center gap-2 shrink-0">
           <span
             className={`px-2 py-1 text-xs font-medium rounded ${
-              folder.errors?.length
+              isInvalid
                 ? 'bg-red-100 dark:bg-red-900/50 text-red-800 dark:text-red-300'
                 : folder.paused
                   ? 'bg-yellow-100 dark:bg-yellow-900/50 text-yellow-800 dark:text-yellow-300'
@@ -42,9 +49,10 @@ function WatchfolderCard({
                     : 'bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-300'
             }`}
           >
-            {folder.errors?.length ? 'Invalid' : folder.paused ? 'Paused' : folder.active ? 'Active' : 'Inactive'}
+            {isInvalid ? 'Invalid' : folder.paused ? 'Paused' : folder.active ? 'Active' : 'Inactive'}
           </span>
-          {!folder.errors?.length && folder.paused ? (
+
+          {!isInvalid && folder.paused ? (
             <button
               onClick={onResume}
               disabled={isResuming}
@@ -52,7 +60,7 @@ function WatchfolderCard({
             >
               Resume
             </button>
-          ) : !folder.errors?.length && folder.active ? (
+          ) : !isInvalid && folder.active ? (
             <button
               onClick={onPause}
               disabled={isPausing}
@@ -64,65 +72,72 @@ function WatchfolderCard({
         </div>
       </div>
 
-      {folder.errors && folder.errors.length > 0 && (
-        <div className="mt-2 p-2 bg-red-50 dark:bg-red-900/20 rounded border border-red-200 dark:border-red-800">
-          {folder.errors.map((err, i) => (
-            <p key={i} className="text-xs text-red-600 dark:text-red-400">{err}</p>
-          ))}
+      {/* Details — only when expanded */}
+      {expanded && (
+        <div className="px-4 pb-4 border-t border-gray-100 dark:border-gray-700 pt-3">
+          <p className="text-sm text-gray-500 dark:text-gray-400 mb-3 break-all">{folder.path}</p>
+
+          {folder.errors && folder.errors.length > 0 && (
+            <div className="mb-3 p-2 bg-red-50 dark:bg-red-900/20 rounded border border-red-200 dark:border-red-800">
+              {folder.errors.map((err, i) => (
+                <p key={i} className="text-xs text-red-600 dark:text-red-400">{err}</p>
+              ))}
+            </div>
+          )}
+
+          <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-sm">
+            <div>
+              <span className="text-gray-500 dark:text-gray-400">Type:</span>{' '}
+              <span className="text-gray-900 dark:text-gray-100 capitalize">{folder.type}</span>
+            </div>
+            <div>
+              <span className="text-gray-500 dark:text-gray-400">Scan:</span>{' '}
+              <span className="text-gray-900 dark:text-gray-100">{folder.scan_interval}s</span>
+            </div>
+
+            {isMediaWatcher && folder.profiles && (
+              <div className="col-span-2">
+                <span className="text-gray-500 dark:text-gray-400">Profiles:</span>{' '}
+                <span className="text-gray-900 dark:text-gray-100">{folder.profiles.join(', ')}</span>
+              </div>
+            )}
+
+            {isMediaWatcher && folder.file_patterns && (
+              <div className="col-span-2">
+                <span className="text-gray-500 dark:text-gray-400">Patterns:</span>{' '}
+                <span className="text-gray-900 dark:text-gray-100 text-xs">{folder.file_patterns.join(', ')}</span>
+              </div>
+            )}
+
+            {isMediaWatcher && (
+              <div>
+                <span className="text-gray-500 dark:text-gray-400">Output:</span>{' '}
+                <span className="text-gray-900 dark:text-gray-100">
+                  {folder.use_profile_destination
+                    ? 'Profile destinations'
+                    : folder.destination
+                      ? folder.destination
+                      : '-'}
+                </span>
+              </div>
+            )}
+
+            {isMediaWatcher && (folder.pending_files !== undefined && folder.pending_files > 0) && (
+              <div>
+                <span className="text-gray-500 dark:text-gray-400">Pending:</span>{' '}
+                <span className="text-gray-900 dark:text-gray-100">{folder.pending_files} files</span>
+              </div>
+            )}
+
+            {isMediaWatcher && (folder.submitted_jobs !== undefined && folder.submitted_jobs > 0) && (
+              <div>
+                <span className="text-gray-500 dark:text-gray-400">Submitted:</span>{' '}
+                <span className="text-gray-900 dark:text-gray-100">{folder.submitted_jobs} jobs</span>
+              </div>
+            )}
+          </div>
         </div>
       )}
-
-      <div className="mt-3 grid grid-cols-2 gap-x-4 gap-y-1 text-sm">
-        <div>
-          <span className="text-gray-500 dark:text-gray-400">Type:</span>{' '}
-          <span className="text-gray-900 dark:text-gray-100 capitalize">{folder.type}</span>
-        </div>
-        <div>
-          <span className="text-gray-500 dark:text-gray-400">Scan:</span>{' '}
-          <span className="text-gray-900 dark:text-gray-100">{folder.scan_interval}s</span>
-        </div>
-
-        {isMediaWatcher && folder.profiles && (
-          <div>
-            <span className="text-gray-500 dark:text-gray-400">Profiles:</span>{' '}
-            <span className="text-gray-900 dark:text-gray-100">{folder.profiles.join(', ')}</span>
-          </div>
-        )}
-
-        {isMediaWatcher && folder.file_patterns && (
-          <div>
-            <span className="text-gray-500 dark:text-gray-400">Patterns:</span>{' '}
-            <span className="text-gray-900 dark:text-gray-100 text-xs">{folder.file_patterns.join(', ')}</span>
-          </div>
-        )}
-
-        {isMediaWatcher && (
-          <div>
-            <span className="text-gray-500 dark:text-gray-400">Output:</span>{' '}
-            <span className="text-gray-900 dark:text-gray-100">
-              {folder.use_profile_destination
-                ? 'Profile destinations'
-                : folder.destination
-                  ? folder.destination.split('/').pop()
-                  : '-'}
-            </span>
-          </div>
-        )}
-
-        {isMediaWatcher && (folder.pending_files !== undefined && folder.pending_files > 0) && (
-          <div>
-            <span className="text-gray-500 dark:text-gray-400">Pending:</span>{' '}
-            <span className="text-gray-900 dark:text-gray-100">{folder.pending_files} files</span>
-          </div>
-        )}
-
-        {isMediaWatcher && (folder.submitted_jobs !== undefined && folder.submitted_jobs > 0) && (
-          <div>
-            <span className="text-gray-500 dark:text-gray-400">Submitted:</span>{' '}
-            <span className="text-gray-900 dark:text-gray-100">{folder.submitted_jobs} jobs</span>
-          </div>
-        )}
-      </div>
     </div>
   )
 }

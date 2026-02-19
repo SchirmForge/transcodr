@@ -1,13 +1,29 @@
+import { useState } from 'react'
 import { useProfiles } from '../../hooks/useProfiles'
 import type { ProfileInfo } from '../../api/types'
 
 function ProfileCard({ profile }: { profile: ProfileInfo }) {
+  const [expanded, setExpanded] = useState(false)
+  const isInvalid = !!profile.error
+
   return (
-    <div className="p-4 bg-white dark:bg-gray-800 rounded-lg shadow">
-      <div className="flex justify-between items-start mb-2">
-        <h3 className="font-medium text-gray-900 dark:text-gray-100">{profile.name}</h3>
-        <div className="flex items-center gap-1.5 shrink-0 ml-2">
-          {profile.error && (
+    <div className="bg-white dark:bg-gray-800 rounded-lg shadow">
+      {/* Header — always visible */}
+      <div className="flex items-center gap-2 p-4">
+        <button
+          onClick={() => setExpanded(e => !e)}
+          className="shrink-0 w-5 text-center text-gray-400 dark:text-gray-500 hover:text-gray-700 dark:hover:text-gray-200 font-mono text-sm leading-none"
+          title={expanded ? 'Collapse' : 'Expand'}
+        >
+          {expanded ? '−' : '+'}
+        </button>
+
+        <h3 className="font-medium text-gray-900 dark:text-gray-100 truncate flex-1 min-w-0">
+          {profile.name}
+        </h3>
+
+        <div className="flex items-center gap-1.5 shrink-0">
+          {isInvalid && (
             <span className="px-2 py-1 text-xs font-medium rounded bg-red-100 dark:bg-red-900/50 text-red-800 dark:text-red-300">
               Invalid
             </span>
@@ -24,40 +40,45 @@ function ProfileCard({ profile }: { profile: ProfileInfo }) {
         </div>
       </div>
 
-      {profile.description && (
-        <p className="text-sm text-gray-600 dark:text-gray-400 mb-3">{profile.description}</p>
-      )}
+      {/* Details — only when expanded */}
+      {expanded && (
+        <div className="px-4 pb-4 border-t border-gray-100 dark:border-gray-700 pt-3">
+          {profile.description && (
+            <p className="text-sm text-gray-600 dark:text-gray-400 mb-3">{profile.description}</p>
+          )}
 
-      <dl className="text-sm space-y-1">
-        {profile.codec && (
-          <div className="flex justify-between">
-            <dt className="text-gray-500 dark:text-gray-400">Codec</dt>
-            <dd className="text-gray-900 dark:text-gray-100">{profile.codec}</dd>
-          </div>
-        )}
-        {profile.container && (
-          <div className="flex justify-between">
-            <dt className="text-gray-500 dark:text-gray-400">Container</dt>
-            <dd className="text-gray-900 dark:text-gray-100">{profile.container}</dd>
-          </div>
-        )}
-        {profile.preset && (
-          <div className="flex justify-between">
-            <dt className="text-gray-500 dark:text-gray-400">Preset</dt>
-            <dd className="text-gray-900 dark:text-gray-100">{profile.preset}</dd>
-          </div>
-        )}
-        {profile.crf !== undefined && (
-          <div className="flex justify-between">
-            <dt className="text-gray-500 dark:text-gray-400">CRF</dt>
-            <dd className="text-gray-900 dark:text-gray-100">{profile.crf}</dd>
-          </div>
-        )}
-      </dl>
+          {isInvalid && (
+            <div className="mb-3 p-2 bg-red-50 dark:bg-red-900/20 rounded border border-red-200 dark:border-red-800">
+              <p className="text-xs text-red-600 dark:text-red-400">{profile.error as string}</p>
+            </div>
+          )}
 
-      {profile.error && (
-        <div className="mt-3 p-2 bg-red-50 dark:bg-red-900/20 rounded border border-red-200 dark:border-red-800">
-          <p className="text-xs text-red-600 dark:text-red-400">{profile.error}</p>
+          <dl className="text-sm space-y-1">
+            {profile.codec && (
+              <div className="flex justify-between">
+                <dt className="text-gray-500 dark:text-gray-400">Codec</dt>
+                <dd className="text-gray-900 dark:text-gray-100">{profile.codec}</dd>
+              </div>
+            )}
+            {profile.container && (
+              <div className="flex justify-between">
+                <dt className="text-gray-500 dark:text-gray-400">Container</dt>
+                <dd className="text-gray-900 dark:text-gray-100">{profile.container}</dd>
+              </div>
+            )}
+            {profile.preset && (
+              <div className="flex justify-between">
+                <dt className="text-gray-500 dark:text-gray-400">Preset</dt>
+                <dd className="text-gray-900 dark:text-gray-100">{profile.preset}</dd>
+              </div>
+            )}
+            {profile.crf !== undefined && (
+              <div className="flex justify-between">
+                <dt className="text-gray-500 dark:text-gray-400">CRF</dt>
+                <dd className="text-gray-900 dark:text-gray-100">{profile.crf}</dd>
+              </div>
+            )}
+          </dl>
         </div>
       )}
     </div>
