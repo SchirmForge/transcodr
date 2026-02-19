@@ -43,7 +43,7 @@
   <!-- TEMP -->
   <Config Name="Temp Folder"
           Target="/temp"
-          Default="/mnt/backup/docker.temp/transcodr/temp"
+          Default="/mnt/temp/transcodr/temp"
           Mode="rw"
           Type="Path"
           Required="true"
@@ -52,7 +52,7 @@
   <!-- LOGS -->
   <Config Name="Logs Folder"
           Target="/logs"
-          Default="/mnt/backup/docker.temp/transcodr/logs"
+          Default="/mnt/user/appdata/transcodr/logs"
           Mode="rw"
           Type="Path"
           Required="true"
