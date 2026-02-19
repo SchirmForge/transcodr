@@ -40,24 +40,6 @@
           Required="true"
           Description="Root media folder to scan and encode" />
 
-  <!-- TV SHOWS -->
-  <Config Name="TV Shows"
-          Target="/media/tvshows"
-          Default="/mnt/user/tvshows"
-          Mode="rw"
-          Type="Path"
-          Required="false"
-          Description="Optional TV Shows library path" />
-
-  <!-- MOVIES -->
-  <Config Name="Movies"
-          Target="/media/movies"
-          Default="/mnt/user/movies"
-          Mode="rw"
-          Type="Path"
-          Required="false"
-          Description="Optional Movies library path" />
-
   <!-- TEMP -->
   <Config Name="Temp Folder"
           Target="/temp"
