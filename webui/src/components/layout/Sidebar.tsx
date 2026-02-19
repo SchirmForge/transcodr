@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { NavLink, useLocation, useNavigate } from 'react-router-dom'
 import { useStatus } from '../../hooks/useStatus'
-import logoImg from '../../assets/transcodr-final-alpha.png'
+import iconImg from '../../assets/transcodr-icon.png'
 
 interface NavItem {
   label: string
@@ -125,20 +125,18 @@ export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void 
           open ? 'translate-x-0' : '-translate-x-full'
         }`}
       >
-      <div className="p-4 flex items-center justify-between gap-3">
-        <div className="flex-1">
-          <img src={logoImg} alt="TransCoDR" className="w-full" />
+      <div className="px-3 py-3 flex items-center justify-between gap-2">
+        <div className="flex items-center gap-2 min-w-0">
+          <img src={iconImg} alt="transcodr" className="w-6 h-6 shrink-0" />
+          <span className="text-sm font-semibold text-steel-800 dark:text-steel-100 truncate">transcodr</span>
         </div>
         <button
           onClick={onClose}
-          className="lg:hidden ml-2 text-xs px-2 py-1 rounded bg-graphite-300 dark:bg-graphite-800 text-steel-700 dark:text-steel-100"
+          className="lg:hidden text-xs px-2 py-1 rounded bg-graphite-300 dark:bg-graphite-800 text-steel-700 dark:text-steel-100"
         >
           Close
         </button>
       </div>
-      <span className="text-xs text-steel-400 block text-center -mt-3 mb-3">
-        {status ? `v${status.version}` : ''}
-      </span>
       <nav className="flex-1 p-2 overflow-y-auto">
         {navigation.map((section) => {
           const isExpanded = expandedSection === section.id
@@ -187,6 +185,11 @@ export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void 
           )
         })}
       </nav>
+      <div className="mt-auto px-4 py-3">
+        <span className="text-xs text-steel-400 block text-center">
+          {status ? `v${status.version}` : ''}
+        </span>
+      </div>
       </aside>
     </>
   )

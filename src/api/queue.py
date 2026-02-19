@@ -96,9 +96,15 @@ class JobQueue:
         # Track cancelled jobs so runner can detect cancellation vs failure
         self._cancelled_job_ids: set[str] = set()
 
+        # In-memory runtime ETA snapshots for active jobs (not persisted to DB)
+        self._runtime_eta: dict[str, dict[str, object]] = {}
+        self._runtime_eta_lock = threading.Lock()
+
     async def start(self):
         """Start the job queue."""
         self._running = True
+        with self._runtime_eta_lock:
+            self._runtime_eta.clear()
         self._init_db()
 
         # Reset stale active-state jobs from previous daemon lifecycle to pending.
@@ -160,6 +166,9 @@ class JobQueue:
 
         if self._conn:
             self._conn.close()
+
+        with self._runtime_eta_lock:
+            self._runtime_eta.clear()
 
         logger.info("Job queue stopped")
 
@@ -240,7 +249,10 @@ class JobQueue:
                 watchfolder_context TEXT,
                 source_id TEXT,
                 use_temp_folder BOOLEAN DEFAULT 1,
-                copy_source_to_temp BOOLEAN DEFAULT 1
+                copy_source_to_temp BOOLEAN DEFAULT 1,
+                auto_embed_subtitles BOOLEAN DEFAULT 1,
+                subtitles_languages TEXT DEFAULT '"all"',
+                subtitle_fallback_mode TEXT DEFAULT 'carry'
             )
         """)
 
@@ -250,6 +262,31 @@ class JobQueue:
         except sqlite3.OperationalError:
             logger.info("Migrating database: adding warning_message column")
             self._conn.execute("ALTER TABLE jobs ADD COLUMN warning_message TEXT")
+
+        # Migration: add subtitle options columns (v0.4.1)
+        try:
+            self._conn.execute("SELECT auto_embed_subtitles FROM jobs LIMIT 1")
+        except sqlite3.OperationalError:
+            logger.info("Migrating database: adding auto_embed_subtitles column")
+            self._conn.execute(
+                "ALTER TABLE jobs ADD COLUMN auto_embed_subtitles BOOLEAN DEFAULT 1"
+            )
+
+        try:
+            self._conn.execute("SELECT subtitles_languages FROM jobs LIMIT 1")
+        except sqlite3.OperationalError:
+            logger.info("Migrating database: adding subtitles_languages column")
+            self._conn.execute(
+                "ALTER TABLE jobs ADD COLUMN subtitles_languages TEXT DEFAULT '\"all\"'"
+            )
+
+        try:
+            self._conn.execute("SELECT subtitle_fallback_mode FROM jobs LIMIT 1")
+        except sqlite3.OperationalError:
+            logger.info("Migrating database: adding subtitle_fallback_mode column")
+            self._conn.execute(
+                "ALTER TABLE jobs ADD COLUMN subtitle_fallback_mode TEXT DEFAULT 'carry'"
+            )
 
         # Create index for efficient queries
         self._conn.execute("""
@@ -395,9 +432,12 @@ class JobQueue:
         """
         job_ids = []
 
-        # Generate source_id for per-source concurrency tracking
-        # Use watchfolder file_hash if available, otherwise generate new UUID
-        if request.watchfolder_context and request.watchfolder_context.file_hash:
+        # Generate source_id for per-source concurrency tracking.
+        # For media watchfolders we prefer a stable watchfolder bucket so limits
+        # apply across all files from that watchfolder, not per individual file.
+        if request.watchfolder_context and request.watchfolder_context.concurrency_bucket:
+            source_id = request.watchfolder_context.concurrency_bucket
+        elif request.watchfolder_context and request.watchfolder_context.file_hash:
             source_id = request.watchfolder_context.file_hash
         else:
             source_id = str(uuid.uuid4())
@@ -436,8 +476,9 @@ class JobQueue:
                             profile_index, total_profiles, parent_job_id,
                             created_at, priority, hardware_accel, backup, backup_dir,
                             source_size_bytes, output_mode, delete_source, watchfolder_context,
-                            source_id, use_temp_folder, copy_source_to_temp
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                            source_id, use_temp_folder, copy_source_to_temp,
+                            auto_embed_subtitles, subtitles_languages, subtitle_fallback_mode
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """, (
                         job_id,
                         JobStatus.PENDING.value,
@@ -459,6 +500,9 @@ class JobQueue:
                         source_id,
                         request.use_temp_folder,
                         request.copy_source_to_temp,
+                        request.auto_embed_subtitles,
+                        json.dumps(request.subtitles_languages),
+                        request.subtitle_fallback_mode,
                     ))
 
                 job_ids.append(job_id)
@@ -611,7 +655,8 @@ class JobQueue:
                     """SELECT id, profile, source_path, output_path, hardware_accel,
                               profile_index, total_profiles, parent_job_id, output_mode,
                               delete_source, watchfolder_context, source_id, use_temp_folder,
-                              copy_source_to_temp
+                              copy_source_to_temp, auto_embed_subtitles, subtitles_languages,
+                              subtitle_fallback_mode
                        FROM jobs WHERE id = ?""",
                     (job_id,)
                 )
@@ -636,6 +681,19 @@ class JobQueue:
             delete_source = bool(row["delete_source"]) if row["delete_source"] is not None else False
             use_temp_folder = bool(row["use_temp_folder"]) if row["use_temp_folder"] is not None else True
             copy_source_to_temp = bool(row["copy_source_to_temp"]) if row["copy_source_to_temp"] is not None else True
+            auto_embed_subtitles = bool(row["auto_embed_subtitles"]) if row["auto_embed_subtitles"] is not None else True
+            subtitle_fallback_mode = str(row["subtitle_fallback_mode"] or "carry").lower()
+            if subtitle_fallback_mode not in {"carry", "skip", "fail"}:
+                subtitle_fallback_mode = "carry"
+
+            subtitles_languages = None
+            if row["subtitles_languages"]:
+                try:
+                    parsed_languages = json.loads(row["subtitles_languages"])
+                    if isinstance(parsed_languages, list):
+                        subtitles_languages = [str(lang) for lang in parsed_languages]
+                except Exception:
+                    subtitles_languages = None
 
             # Deserialize watchfolder_context if present
             watchfolder_context = None
@@ -652,6 +710,9 @@ class JobQueue:
                 delete_source=delete_source,
                 use_temp_folder=use_temp_folder,
                 copy_source_to_temp=copy_source_to_temp,
+                auto_embed_subtitles=auto_embed_subtitles,
+                subtitles_languages=subtitles_languages,
+                subtitle_fallback_mode=subtitle_fallback_mode,
             )
             job.id = job_id
             job.output_path = output_path
@@ -737,18 +798,55 @@ class JobQueue:
                     job.hardware_accel,
                     job_id,
                 ))
+            self._set_runtime_eta(job_id, job.eta_seconds, job.eta_quality)
         except Exception as e:
             logger.warning(f"Failed to update progress for {job_id}: {e}")
+
+    def _set_runtime_eta(
+        self,
+        job_id: str,
+        eta_seconds: Optional[int],
+        eta_quality: Optional[str],
+    ) -> None:
+        """Store latest in-memory ETA snapshot for a running job."""
+        with self._runtime_eta_lock:
+            if eta_seconds is None and eta_quality is None:
+                self._runtime_eta.pop(job_id, None)
+                return
+            self._runtime_eta[job_id] = {
+                "eta_seconds": eta_seconds,
+                "eta_quality": eta_quality,
+            }
+
+    def _get_runtime_eta(self, job_id: str) -> tuple[Optional[int], Optional[str]]:
+        """Get in-memory ETA snapshot for a job."""
+        with self._runtime_eta_lock:
+            eta = self._runtime_eta.get(job_id)
+            if not eta:
+                return None, None
+            eta_seconds = eta.get("eta_seconds")
+            eta_quality = eta.get("eta_quality")
+            return (
+                eta_seconds if isinstance(eta_seconds, int) else None,
+                eta_quality if isinstance(eta_quality, str) else None,
+            )
+
+    def _clear_runtime_eta(self, job_id: str) -> None:
+        """Clear in-memory ETA snapshot for a job."""
+        with self._runtime_eta_lock:
+            self._runtime_eta.pop(job_id, None)
 
     async def _update_job_status(self, job_id: str, status: JobStatus):
         """Update job status."""
         async with self._lock:
             now = datetime.now().isoformat()
             if status == JobStatus.RUNNING:
+                self._clear_runtime_eta(job_id)
                 self._conn.execute("""
                     UPDATE jobs SET status = ?, started_at = ? WHERE id = ?
                 """, (status.value, now, job_id))
             else:
+                self._clear_runtime_eta(job_id)
                 self._conn.execute("""
                     UPDATE jobs SET status = ? WHERE id = ?
                 """, (status.value, job_id))
@@ -756,6 +854,7 @@ class JobQueue:
     async def _update_job_completed(self, job_id: str, job: Job):
         """Update job as completed (or warning if warnings present)."""
         status = JobStatus.WARNING if job.warning_message else JobStatus.COMPLETED
+        self._clear_runtime_eta(job_id)
         async with self._lock:
             self._conn.execute("""
                 UPDATE jobs SET
@@ -786,6 +885,7 @@ class JobQueue:
 
     async def _update_job_failed(self, job_id: str, error: str):
         """Update job as failed."""
+        self._clear_runtime_eta(job_id)
         async with self._lock:
             self._conn.execute("""
                 UPDATE jobs SET
@@ -923,6 +1023,7 @@ class JobQueue:
                     completed_at = NULL
                 WHERE id = ?
             """, (JobStatus.PENDING.value, job_id))
+            self._clear_runtime_eta(job_id)
 
         return await self.get_job(job_id)
 
@@ -1053,6 +1154,8 @@ class JobQueue:
             except Exception:
                 pass
 
+        eta_seconds, eta_quality = self._get_runtime_eta(row["id"])
+
         return JobInfo(
             id=row["id"],
             status=JobStatus(row["status"]),
@@ -1066,6 +1169,8 @@ class JobQueue:
             fps=row["fps"] or 0.0,
             frames_processed=row["frames_processed"] or 0,
             frames_total=row["frames_total"] or 0,
+            eta_seconds=eta_seconds,
+            eta_quality=eta_quality,
             created_at=datetime.fromisoformat(row["created_at"]),
             started_at=datetime.fromisoformat(row["started_at"]) if row["started_at"] else None,
             completed_at=datetime.fromisoformat(row["completed_at"]) if row["completed_at"] else None,

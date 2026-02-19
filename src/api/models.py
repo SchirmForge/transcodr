@@ -7,6 +7,11 @@ from pathlib import Path
 from typing import Literal, Optional, Union
 from pydantic import BaseModel, Field, field_validator, model_validator
 
+from src.core.subtitles import (
+    parse_requested_subtitle_languages,
+    parse_subtitle_fallback_mode,
+)
+
 
 class JobStatus(str, Enum):
     """Job status states."""
@@ -43,6 +48,10 @@ class WatchfolderContext(BaseModel):
     """
     file_hash: str = Field(
         description="File fingerprint for tracking and duplicate detection"
+    )
+    concurrency_bucket: Optional[str] = Field(
+        default=None,
+        description="Stable concurrency bucket key shared by all jobs from the same watchfolder",
     )
     keep_processed_files: bool = Field(
         default=True,
@@ -163,6 +172,18 @@ class EncodingRequest(BaseModel):
         default_factory=lambda: ["*.mkv", "*.mp4", "*.avi", "*.mov", "*.wmv", "*.flv", "*.webm", "*.m2ts", "*.ts"],
         description="File patterns to match (glob patterns)"
     )
+    auto_embed_subtitles: bool = Field(
+        default=True,
+        description="Auto-detect and embed matching external subtitle files when available"
+    )
+    subtitles_languages: Union[Literal["all"], list[str]] = Field(
+        default="all",
+        description="Subtitle language filter: 'all' or list of language codes (eng, fre, spa, ...). Unknown language subtitles are always included when filtering.",
+    )
+    subtitle_fallback_mode: Literal["carry", "skip", "fail"] = Field(
+        default="carry",
+        description="Behavior when an external subtitle is detected but cannot be embedded",
+    )
 
     # Performance options
     hardware_accel: Optional[str] = Field(
@@ -263,6 +284,19 @@ class EncodingRequest(BaseModel):
         if isinstance(v, str):
             return v.lower() in ('yes', 'true', '1')
         return v
+
+    @field_validator('subtitles_languages', mode='before')
+    @classmethod
+    def normalize_subtitles_languages(cls, v):
+        """Normalize subtitle language selection."""
+        parsed = parse_requested_subtitle_languages(v)
+        return parsed if parsed is not None else "all"
+
+    @field_validator('subtitle_fallback_mode', mode='before')
+    @classmethod
+    def normalize_subtitle_fallback_mode(cls, v):
+        """Normalize subtitle fallback mode."""
+        return parse_subtitle_fallback_mode(v)
 
     @model_validator(mode='after')
     def validate_destination_profile(self):
@@ -463,6 +497,11 @@ class JobInfo(BaseModel):
     fps: float = Field(default=0.0, description="Current encoding speed (fps)")
     frames_processed: int = Field(default=0, description="Frames processed")
     frames_total: int = Field(default=0, description="Total frames")
+    eta_seconds: Optional[int] = Field(default=None, description="Estimated seconds to completion")
+    eta_quality: Optional[Literal["rough", "stable", "high"]] = Field(
+        default=None,
+        description="ETA confidence level",
+    )
 
     # Timing
     created_at: datetime = Field(description="Job creation time")
@@ -513,6 +552,42 @@ class QueueInfo(BaseModel):
     current_concurrent: int = Field(description="Current concurrent jobs")
 
 
+class DiskUsageInfo(BaseModel):
+    """Disk usage information for a mount point."""
+
+    path: str = Field(description="Mount path")
+    total_bytes: int = Field(description="Total capacity in bytes")
+    used_bytes: int = Field(description="Used bytes")
+    free_bytes: int = Field(description="Available bytes")
+    percent_used: float = Field(description="Used percentage")
+
+
+class DiskLocationInfo(BaseModel):
+    """Disk usage mapped to a specific runtime location."""
+
+    label: str = Field(description="Human-friendly location label")
+    path: str = Field(description="Location path")
+    mount_path: str = Field(description="Resolved mount point for the location")
+    total_bytes: int = Field(description="Total capacity in bytes")
+    used_bytes: int = Field(description="Used bytes")
+    free_bytes: int = Field(description="Available bytes")
+    percent_used: float = Field(description="Used percentage")
+
+
+class ConfigLocationsInfo(BaseModel):
+    """Relevant configuration and storage locations."""
+
+    config_file: str = Field(description="Main config file path")
+    config_dir: str = Field(description="Configuration directory path")
+    profiles_dir: str = Field(description="Profiles directory path")
+    watchfolders_dir: str = Field(description="Watchfolders directory path")
+    jobs_db: str = Field(description="Jobs database path")
+    root_media: str = Field(description="Root media path")
+    temp_dir: str = Field(description="Temporary encoding directory path")
+    log_dir: Optional[str] = Field(default=None, description="Log directory path, or null if disabled")
+    backup_dir: str = Field(description="Resolved backup directory path")
+
+
 class DaemonStatus(BaseModel):
     """Daemon status information."""
 
@@ -524,6 +599,12 @@ class DaemonStatus(BaseModel):
     watch_folders: list[WatchFolderInfo] = Field(description="Active watch folders")
 
     hardware: dict = Field(description="Hardware capabilities")
+    disks: list[DiskUsageInfo] = Field(default_factory=list, description="Disk usage for root and mounted volumes")
+    disk_locations: list[DiskLocationInfo] = Field(
+        default_factory=list,
+        description="Disk usage mapped to key runtime locations",
+    )
+    config_locations: ConfigLocationsInfo = Field(description="Resolved runtime config and storage locations")
     config_path: str = Field(description="Configuration file path")
 
 

@@ -496,6 +496,7 @@ class MediaFileWatcher:
 
         # Build request with watchfolder context
         # JobRunner handles: temp copy (optional), final rename to .processed/.failed or delete
+        watchfolder_bucket = f"watchfolder:{self.watch_path.resolve()}"
         request = EncodingRequest(
             profiles=self.config.profiles,
             source=str(file_path),
@@ -507,9 +508,13 @@ class MediaFileWatcher:
             hardware_accel=self.config.hardware_accel,
             priority=self.config.priority,
             append_profile_name=self.config.append_profile_name,
+            auto_embed_subtitles=self.config.auto_embed_subtitles,
+            subtitles_languages=self.config.subtitles_languages,
+            subtitle_fallback_mode=self.config.subtitle_fallback_mode,
             max_concurrent_jobs=self.config.max_concurrent_jobs,
             watchfolder_context=WatchfolderContext(
                 file_hash=file_hash,
+                concurrency_bucket=watchfolder_bucket,
                 keep_processed_files=self.config.keep_processed_files,
                 disable_temp_copy=self.config.disable_temp_copy,
                 temp_folder=str(self.config.temp_folder) if self.config.temp_folder else None,

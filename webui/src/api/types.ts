@@ -22,6 +22,8 @@ export interface JobInfo {
   fps: number
   frames_processed: number
   frames_total: number
+  eta_seconds: number | null
+  eta_quality: 'rough' | 'stable' | 'high' | null
 
   // Timing (ISO strings from API)
   created_at: string
@@ -70,6 +72,36 @@ export interface HardwareInfo {
   [key: string]: unknown
 }
 
+export interface DiskUsageInfo {
+  path: string
+  total_bytes: number
+  used_bytes: number
+  free_bytes: number
+  percent_used: number
+}
+
+export interface DiskLocationInfo {
+  label: string
+  path: string
+  mount_path: string
+  total_bytes: number
+  used_bytes: number
+  free_bytes: number
+  percent_used: number
+}
+
+export interface ConfigLocationsInfo {
+  config_file: string
+  config_dir: string
+  profiles_dir: string
+  watchfolders_dir: string
+  jobs_db: string
+  root_media: string
+  temp_dir: string
+  log_dir: string | null
+  backup_dir: string
+}
+
 // Watch folder info - matches actual API response
 export interface WatchFolderInfo {
   id: string
@@ -96,6 +128,9 @@ export interface DaemonStatus {
   queue: QueueInfo
   watch_folders: WatchFolderInfo[]
   hardware: HardwareInfo
+  disks: DiskUsageInfo[]
+  disk_locations: DiskLocationInfo[]
+  config_locations: ConfigLocationsInfo
   config_path: string
 }
 
@@ -145,6 +180,9 @@ export interface EncodingRequest {
   delete_source?: boolean
   use_temp_folder?: boolean
   copy_source_to_temp?: boolean
+  auto_embed_subtitles?: boolean
+  subtitles_languages?: 'all' | string[]
+  subtitle_fallback_mode?: 'carry' | 'skip' | 'fail'
 }
 
 export interface SubmitJobRequest {

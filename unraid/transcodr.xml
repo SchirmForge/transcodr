@@ -1,0 +1,110 @@
+<?xml version="1.0"?>
+<Container version="2">
+  <Name>Transcodr</Name>
+  <Repository>schirmforge/transcodr:stable</Repository>
+  <Registry>https://hub.docker.com/r/schirmforge/transcodr</Registry>
+  <Network>bridge</Network>
+  <Privileged>false</Privileged>
+  <Support>https://github.com/schirmforge/transcodr</Support>
+  <Overview>
+    Self-hosted video transcoding daemon with encoding profiles, watchfolders and GPU acceleration.
+  </Overview>
+  <Category>MediaApp:Video MediaServer:Other</Category>
+  <WebUI>http://[IP]:[PORT:8765]</WebUI>
+  <Icon>https://raw.githubusercontent.com/schirmforge/transcodr/main/docs/icon.png</Icon>
+
+  <!-- PORT -->
+  <Config Name="WebUI Port"
+          Target="8765"
+          Default="8765"
+          Mode="tcp"
+          Type="Port"
+          Required="true"
+          Description="Port used to access Transcodr Web UI and API" />
+
+  <!-- CONFIG -->
+  <Config Name="Config Folder"
+          Target="/config"
+          Default="/mnt/user/appdata/transcodr/config"
+          Mode="rw"
+          Type="Path"
+          Required="true"
+          Description="Stores configuration, profiles, watchfolders and database" />
+
+  <!-- MEDIA ROOT -->
+  <Config Name="Media Root"
+          Target="/media"
+          Default="/mnt/user/video-production"
+          Mode="rw"
+          Type="Path"
+          Required="true"
+          Description="Root media folder to scan and encode" />
+
+  <!-- TV SHOWS -->
+  <Config Name="TV Shows"
+          Target="/media/tvshows"
+          Default="/mnt/user/tvshows"
+          Mode="rw"
+          Type="Path"
+          Required="false"
+          Description="Optional TV Shows library path" />
+
+  <!-- MOVIES -->
+  <Config Name="Movies"
+          Target="/media/movies"
+          Default="/mnt/user/movies"
+          Mode="rw"
+          Type="Path"
+          Required="false"
+          Description="Optional Movies library path" />
+
+  <!-- TEMP -->
+  <Config Name="Temp Folder"
+          Target="/temp"
+          Default="/mnt/backup/docker.temp/transcodr/temp"
+          Mode="rw"
+          Type="Path"
+          Required="true"
+          Description="Temporary encoding directory" />
+
+  <!-- LOGS -->
+  <Config Name="Logs Folder"
+          Target="/logs"
+          Default="/mnt/backup/docker.temp/transcodr/logs"
+          Mode="rw"
+          Type="Path"
+          Required="true"
+          Description="Log output directory" />
+
+  <!-- ENV VARS -->
+  <Config Name="Config Directory Variable"
+          Target="TRANSCODR_CONFIG_DIR"
+          Default="/config"
+          Type="Variable"
+          Required="true"
+          Description="Internal config directory (should remain /config)" />
+
+  <Config Name="PUID"
+          Target="PUID"
+          Default="99"
+          Type="Variable"
+          Required="true"
+          Description="User ID for file ownership (Unraid default: 99)" />
+
+  <Config Name="PGID"
+          Target="PGID"
+          Default="100"
+          Type="Variable"
+          Required="true"
+          Description="Group ID for file ownership (Unraid default: 100)" />
+
+  <!-- GPU SUPPORT -->
+
+  <Config Name="VAAPI Device"
+          Target="/dev/dri"
+          Default="/dev/dri"
+          Type="Device"
+          Required="false"
+          Description="Enable Intel/AMD GPU acceleration (VAAPI)" />
+
+</Container>

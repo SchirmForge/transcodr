@@ -139,6 +139,9 @@ class Profile(BaseModel):
         input_path: str,
         output_path: str,
         hardware_accel: Optional[str] = None,
+        external_subtitles: Optional[list[tuple[str, str]]] = None,
+        subtitle_map_overrides: Optional[list[str]] = None,
+        external_subtitle_codec_overrides: Optional[list[tuple[int, str]]] = None,
     ) -> list[str]:
         """
         Convert profile to FFmpeg command arguments.
@@ -157,6 +160,8 @@ class Profile(BaseModel):
             -ss before -i enables fast input seeking (keyframe-based)
         """
         args = []
+        external_subtitles = external_subtitles or []
+        external_subtitle_codec_overrides = external_subtitle_codec_overrides or []
 
         # Select video settings (hardware variant or default)
         video_settings = self.video
@@ -186,12 +191,21 @@ class Profile(BaseModel):
         # Input file
         args.extend(["-i", input_path])
 
-        # Duration (AFTER input)
+        # External subtitle inputs (if any)
+        for subtitle_input, _ in external_subtitles:
+            args.extend(["-i", subtitle_input])
+
+        # Duration (AFTER all inputs)
         if self.duration:
             args.extend(["-t", self.duration])
 
         # Determine if we need explicit stream mapping
-        need_explicit_mapping = self.audio.include_all or self.subtitles.include_all
+        need_explicit_mapping = (
+            self.audio.include_all
+            or self.subtitles.include_all
+            or bool(external_subtitles)
+            or subtitle_map_overrides is not None
+        )
         uses_vaapi_filter = (
             not is_video_copy
             and video_settings.hwaccel == "vaapi"
@@ -216,11 +230,28 @@ class Profile(BaseModel):
                 args.extend(["-map", "0:a:0?"])  # Only first audio stream
 
             # Map subtitle streams
-            if self.subtitles.include_all:
+            internal_subtitle_count: Optional[int] = None
+            if subtitle_map_overrides is not None:
+                internal_subtitle_count = len(subtitle_map_overrides)
+                for map_spec in subtitle_map_overrides:
+                    args.extend(["-map", map_spec])
+            elif self.subtitles.include_all:
                 args.extend(["-map", "0:s?"])  # ? = optional (don't fail if no subtitles)
             else:
                 args.extend(["-map", "0:s:0?"])  # Only first subtitle stream
 
+            # Map external subtitle streams
+            for idx, _ in enumerate(external_subtitles, start=1):
+                args.extend(["-map", f"{idx}:s:0?"])
+
+            # Apply language metadata for external subtitle streams
+            if internal_subtitle_count is not None:
+                for ext_idx, (_, language) in enumerate(external_subtitles):
+                    if language:
+                        output_sub_index = internal_subtitle_count + ext_idx
+                        args.extend(
+                            [f"-metadata:s:s:{output_sub_index}", f"language={language}"]
+                        )
         # Video settings
         if is_video_copy:
             # Stream copy mode - no encoding
@@ -281,6 +312,9 @@ class Profile(BaseModel):
             args.extend(["-c:s", "copy"])
         elif self.subtitles.codec:
             args.extend(["-c:s", self.subtitles.codec])
+
+        for output_sub_index, codec in external_subtitle_codec_overrides:
+            args.extend([f"-c:s:{output_sub_index}", codec])
 
         # Output file
         args.append(output_path)

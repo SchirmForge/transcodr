@@ -33,6 +33,17 @@ function formatDate(dateStr: string | null): string {
   return new Date(dateStr).toLocaleString()
 }
 
+function formatDuration(seconds: number): string {
+  const total = Math.max(0, Math.round(seconds))
+  const hours = Math.floor(total / 3600)
+  const minutes = Math.floor((total % 3600) / 60)
+  const secs = total % 60
+
+  if (hours > 0) return `${hours}h ${minutes}m`
+  if (minutes > 0) return `${minutes}m ${secs}s`
+  return `${secs}s`
+}
+
 function ChevronIcon({ expanded }: { expanded: boolean }) {
   return (
     <svg
@@ -102,10 +113,27 @@ function JobCard({
           <div className="mt-3 ml-6">
             <div className="flex justify-between text-sm text-gray-600 dark:text-gray-400 mb-1">
               <span>{job.progress.toFixed(1)}%</span>
-              <span>
-                {job.fps > 0 && `${job.fps.toFixed(1)} fps`}
-                {job.frames_total > 0 && ` - ${job.frames_processed}/${job.frames_total} frames`}
-              </span>
+              <div className="flex flex-wrap items-center justify-end gap-2 text-right">
+                {(job.fps > 0 || job.frames_total > 0) && (
+                  <span>
+                    {job.fps > 0 && `${job.fps.toFixed(1)} fps`}
+                    {job.frames_total > 0 && ` - ${job.frames_processed}/${job.frames_total} frames`}
+                  </span>
+                )}
+                {job.eta_seconds !== null ? (
+                  <span
+                    className={
+                      job.eta_quality === 'rough'
+                        ? 'text-amber-600 dark:text-amber-400'
+                        : 'text-green-600 dark:text-green-400'
+                    }
+                  >
+                    ETC {job.eta_quality === 'rough' ? '~' : ''}{formatDuration(job.eta_seconds)}
+                  </span>
+                ) : (
+                  <span className="text-gray-500 dark:text-gray-500">Stabilizing...</span>
+                )}
+              </div>
             </div>
             <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2">
               <div

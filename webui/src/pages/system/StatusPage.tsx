@@ -1,4 +1,5 @@
 import { useStatus } from '../../hooks/useStatus'
+import logoImg from '../../assets/transcodr-final-alpha.png'
 
 function formatUptime(seconds: number): string {
   const hours = Math.floor(seconds / 3600)
@@ -7,6 +8,14 @@ function formatUptime(seconds: number): string {
     return `${hours}h ${minutes}m`
   }
   return `${minutes}m`
+}
+
+function formatBytes(bytes: number): string {
+  if (bytes <= 0) return '0 B'
+  const units = ['B', 'KB', 'MB', 'GB', 'TB', 'PB']
+  const index = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1)
+  const value = bytes / Math.pow(1024, index)
+  return `${value.toFixed(index === 0 ? 0 : 1)} ${units[index]}`
 }
 
 export function StatusPage() {
@@ -59,18 +68,12 @@ export function StatusPage() {
               </dd>
             </div>
             <div className="flex justify-between">
-              <dt className="text-gray-500 dark:text-gray-400">Version</dt>
-              <dd className="text-gray-900 dark:text-gray-100">{status.version}</dd>
-            </div>
-            <div className="flex justify-between">
               <dt className="text-gray-500 dark:text-gray-400">Uptime</dt>
               <dd className="text-gray-900 dark:text-gray-100">{formatUptime(status.uptime_seconds)}</dd>
             </div>
             <div className="flex justify-between">
-              <dt className="text-gray-500 dark:text-gray-400">Config</dt>
-              <dd className="text-gray-900 dark:text-gray-100 truncate max-w-32" title={status.config_path}>
-                {status.config_path.split('/').pop()}
-              </dd>
+              <dt className="text-gray-500 dark:text-gray-400">Queue Limit</dt>
+              <dd className="text-gray-900 dark:text-gray-100">{status.queue.max_concurrent}</dd>
             </div>
           </dl>
         </div>
@@ -144,6 +147,103 @@ export function StatusPage() {
             </div>
           </dl>
         </div>
+      </div>
+
+      <div className="mt-6 p-4 bg-white dark:bg-gray-800 rounded-lg shadow">
+        <div className="flex gap-4">
+          <div className="min-w-0 flex-1">
+            <h2 className="font-semibold text-gray-800 dark:text-gray-200">About</h2>
+            <p className="text-sm text-gray-600 dark:text-gray-400 mb-3">Build and runtime details.</p>
+
+            <dl className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-2 text-sm">
+              <div className="flex justify-between gap-2">
+                <dt className="text-gray-500 dark:text-gray-400">Version</dt>
+                <dd className="text-gray-900 dark:text-gray-100">{status.version}</dd>
+              </div>
+              <div className="md:col-span-2">
+                <dt className="text-gray-500 dark:text-gray-400">Config Location</dt>
+                <dd className="text-gray-900 dark:text-gray-100 break-all" title={status.config_locations.config_dir}>
+                  {status.config_locations.config_dir}
+                </dd>
+              </div>
+              <div className="md:col-span-2">
+                <dt className="text-gray-500 dark:text-gray-400">Contains</dt>
+                <dd className="text-gray-900 dark:text-gray-100">
+                  config.yaml, profiles/, watchfolders/, jobs.db
+                </dd>
+              </div>
+              <div className="md:col-span-2">
+                <dt className="text-gray-500 dark:text-gray-400">Root Media</dt>
+                <dd className="text-gray-900 dark:text-gray-100 break-all" title={status.config_locations.root_media}>
+                  {status.config_locations.root_media}
+                </dd>
+              </div>
+              <div className="md:col-span-2">
+                <dt className="text-gray-500 dark:text-gray-400">Temp Directory</dt>
+                <dd className="text-gray-900 dark:text-gray-100 break-all" title={status.config_locations.temp_dir}>
+                  {status.config_locations.temp_dir}
+                </dd>
+              </div>
+              <div className="md:col-span-2">
+                <dt className="text-gray-500 dark:text-gray-400">Log Directory</dt>
+                <dd className="text-gray-900 dark:text-gray-100 break-all" title={status.config_locations.log_dir ?? 'disabled'}>
+                  {status.config_locations.log_dir ?? 'disabled'}
+                </dd>
+              </div>
+              <div className="md:col-span-2">
+                <dt className="text-gray-500 dark:text-gray-400">Backup Directory</dt>
+                <dd className="text-gray-900 dark:text-gray-100 break-all" title={status.config_locations.backup_dir}>
+                  {status.config_locations.backup_dir}
+                </dd>
+              </div>
+            </dl>
+          </div>
+          <div className="hidden min-[50rem]:flex min-[50rem]:w-48 min-[50rem]:justify-end">
+            <div className="h-full max-h-[200px] flex items-start">
+              <img src={logoImg} alt="TransCoDR" className="h-full max-h-[200px] w-auto object-contain opacity-90" />
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="mt-6 p-4 bg-white dark:bg-gray-800 rounded-lg shadow">
+        <h2 className="font-semibold text-gray-800 dark:text-gray-200 mb-1">Disk Space</h2>
+        <p className="text-sm text-gray-600 dark:text-gray-400 mb-3">
+          Available space for root and mounted volumes.
+        </p>
+
+        {status.disk_locations && status.disk_locations.length > 0 ? (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="text-left text-gray-500 dark:text-gray-400 border-b border-gray-200 dark:border-gray-700">
+                  <th className="py-2 pr-4 font-medium">Location</th>
+                  <th className="py-2 pr-4 font-medium">Path</th>
+                  <th className="py-2 pr-4 font-medium">Mount</th>
+                  <th className="py-2 pr-4 font-medium">Available</th>
+                  <th className="py-2 pr-4 font-medium">Used</th>
+                  <th className="py-2 pr-4 font-medium">Total</th>
+                  <th className="py-2 font-medium">Used %</th>
+                </tr>
+              </thead>
+              <tbody>
+                {status.disk_locations.map((disk) => (
+                  <tr key={`${disk.label}-${disk.path}`} className="border-b border-gray-100 dark:border-gray-800 last:border-b-0">
+                    <td className="py-2 pr-4 text-gray-900 dark:text-gray-100">{disk.label}</td>
+                    <td className="py-2 pr-4 text-gray-900 dark:text-gray-100 break-all">{disk.path}</td>
+                    <td className="py-2 pr-4 text-gray-900 dark:text-gray-100">{disk.mount_path}</td>
+                    <td className="py-2 pr-4 text-green-600 dark:text-green-400">{formatBytes(disk.free_bytes)}</td>
+                    <td className="py-2 pr-4 text-gray-900 dark:text-gray-100">{formatBytes(disk.used_bytes)}</td>
+                    <td className="py-2 pr-4 text-gray-900 dark:text-gray-100">{formatBytes(disk.total_bytes)}</td>
+                    <td className="py-2 text-gray-900 dark:text-gray-100">{disk.percent_used.toFixed(1)}%</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <p className="text-sm text-gray-500 dark:text-gray-400">Disk information unavailable.</p>
+        )}
       </div>
 
       <div className="mt-6 p-4 bg-white dark:bg-gray-800 rounded-lg shadow">

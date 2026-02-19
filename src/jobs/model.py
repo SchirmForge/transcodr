@@ -43,6 +43,9 @@ class Job(BaseModel):
     delete_source: bool = Field(default=False)
     use_temp_folder: bool = Field(default=True)
     copy_source_to_temp: bool = Field(default=True)
+    auto_embed_subtitles: bool = Field(default=True)
+    subtitles_languages: Optional[list[str]] = None  # None means "all"
+    subtitle_fallback_mode: str = Field(default="carry")
 
     # Profile
     profile_name: str
@@ -59,6 +62,7 @@ class Job(BaseModel):
     frames_total: Optional[int] = None
     current_fps: float = 0.0
     eta_seconds: Optional[int] = None
+    eta_quality: Optional[str] = None
 
     # Error handling
     error_message: Optional[str] = None

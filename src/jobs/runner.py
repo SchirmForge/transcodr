@@ -11,10 +11,20 @@ from src.core.probe import ProbeHelper
 from src.core.replace import SafeReplacer
 from src.core.hardware import HardwareCapabilities
 from src.core.errors import ValidationError, EncodingError, ReplacementError
+from src.core.subtitles import (
+    detect_ffmpeg_subtitle_capabilities,
+    detect_external_subtitles,
+    evaluate_professional_subtitle_embedding,
+    is_professional_subtitle_file,
+    normalize_language_code,
+    parse_subtitle_fallback_mode,
+    should_include_subtitle_language,
+)
 from src.profiles.manager import ProfileManager
 from src.profiles.store import get_profile_manager
 from src.api.models import WatchfolderContext
 from src.watcher.inotify_watcher import wait_for_file_ready
+from .eta import EtaEstimator
 from .model import Job, JobState, OutputMode
 
 logger = logging.getLogger(__name__)
@@ -147,6 +157,7 @@ class JobRunner:
         is_multi_profile = total_profiles > 1
         is_first_profile = profile_index == 0
         temp_source_path: Optional[Path] = None
+        carry_sidecar_subtitles: list[Path] = []
         logger.info(f"Starting job execution: {job} (profile {profile_index + 1}/{total_profiles})")
 
         try:
@@ -214,11 +225,99 @@ class JobRunner:
                             f"start_time + duration ({end_time:.1f}s) exceeds source duration ({source_duration:.1f}s)"
                         )
 
+            selected_subtitle_languages = (
+                set(job.subtitles_languages) if job.subtitles_languages else None
+            )
+            subtitle_fallback_mode = parse_subtitle_fallback_mode(job.subtitle_fallback_mode)
+            external_subtitles: list[tuple[str, str]] = []
+            external_codec_by_external_index: dict[int, str] = {}
+            skipped_professional_subtitles: list[str] = []
+
+            if job.auto_embed_subtitles:
+                detected_subtitles = detect_external_subtitles(job.source_path)
+                ffmpeg_caps = detect_ffmpeg_subtitle_capabilities(self.ffmpeg.binary_path)
+
+                for subtitle in detected_subtitles:
+                    if not should_include_subtitle_language(
+                        subtitle.language,
+                        selected_subtitle_languages,
+                    ):
+                        continue
+
+                    if not is_professional_subtitle_file(subtitle.path):
+                        external_subtitles.append((str(subtitle.path), subtitle.language))
+                        continue
+
+                    decision = evaluate_professional_subtitle_embedding(
+                        subtitle.path,
+                        container=profile.container,
+                        ffmpeg_caps=ffmpeg_caps,
+                        profile_subtitle_codec=profile.subtitles.codec,
+                    )
+
+                    if decision.embeddable:
+                        external_idx = len(external_subtitles)
+                        external_subtitles.append((str(subtitle.path), subtitle.language))
+                        if decision.codec_override:
+                            external_codec_by_external_index[external_idx] = decision.codec_override
+                        continue
+
+                    detail = subtitle.path.name
+                    if decision.reason:
+                        detail = f"{detail} ({decision.reason})"
+
+                    if subtitle_fallback_mode == "fail":
+                        raise ValidationError(
+                            f"Cannot embed professional subtitle {detail}. "
+                            f"Set subtitle_fallback_mode to 'carry' or 'skip' to continue."
+                        )
+                    if subtitle_fallback_mode == "carry":
+                        carry_sidecar_subtitles.append(subtitle.path)
+                    else:
+                        skipped_professional_subtitles.append(detail)
+
+                if external_subtitles:
+                    logger.info(
+                        "Detected external subtitles for embedding: %s",
+                        ", ".join(f"{Path(path).name}[{lang}]" for path, lang in external_subtitles),
+                    )
+
+            if carry_sidecar_subtitles:
+                job.add_warning(
+                    "Professional subtitles carried as sidecars: "
+                    + ", ".join(path.name for path in carry_sidecar_subtitles)
+                )
+            if skipped_professional_subtitles:
+                job.add_warning(
+                    "Professional subtitles skipped: "
+                    + ", ".join(skipped_professional_subtitles)
+                )
+
+            force_explicit_subtitle_mapping = (
+                selected_subtitle_languages is not None or bool(external_subtitles)
+            )
+            subtitle_map_overrides = self._build_internal_subtitle_maps(
+                source_for_encoding,
+                include_all=profile.subtitles.include_all,
+                selected_languages=selected_subtitle_languages,
+                force_explicit_mapping=force_explicit_subtitle_mapping,
+            )
+            external_subtitle_codec_overrides: list[tuple[int, str]] = []
+            if subtitle_map_overrides is not None and external_codec_by_external_index:
+                base_internal_count = len(subtitle_map_overrides)
+                external_subtitle_codec_overrides = [
+                    (base_internal_count + ext_idx, codec)
+                    for ext_idx, codec in sorted(external_codec_by_external_index.items())
+                ]
+
             # Build FFmpeg arguments (use temp source for multi-profile)
             ffmpeg_args = profile.to_ffmpeg_args(
                 str(source_for_encoding),
                 str(job.temp_path),
                 hardware_accel=job.hardware_accel,
+                external_subtitles=external_subtitles,
+                subtitle_map_overrides=subtitle_map_overrides,
+                external_subtitle_codec_overrides=external_subtitle_codec_overrides,
             )
 
             # Log FFmpeg command for debugging
@@ -233,6 +332,7 @@ class JobRunner:
                 progress_callback(job)
 
             logger.info(f"Starting encoding: {source_for_encoding.name} → {profile.name}")
+            eta_estimator = EtaEstimator()
 
             def on_progress(progress: FFmpegProgress):
                 """Handle FFmpeg progress updates."""
@@ -241,6 +341,14 @@ class JobRunner:
                     fps=progress.fps,
                     total_frames=job.frames_total,
                 )
+                eta = eta_estimator.update(
+                    frame=job.frames_processed,
+                    fps=job.current_fps,
+                    frames_total=job.frames_total,
+                    progress_percent=job.progress_percent,
+                )
+                job.eta_seconds = eta.eta_seconds
+                job.eta_quality = eta.quality
                 if progress_callback:
                     progress_callback(job)
 
@@ -271,6 +379,9 @@ class JobRunner:
             else:
                 # Replace mode, subsequent profiles: copy to output path (with profile suffix)
                 self._copy_to_output(job)
+
+            if carry_sidecar_subtitles:
+                self._carry_sidecar_subtitles(job, carry_sidecar_subtitles)
 
             # Delete source if requested (only for destination mode, as replace mode already replaces)
             if job.delete_source and job.output_mode == OutputMode.DESTINATION:
@@ -483,6 +594,47 @@ class JobRunner:
         except ValueError:
             return None
 
+    def _build_internal_subtitle_maps(
+        self,
+        source_path: Path,
+        include_all: bool,
+        selected_languages: Optional[set[str]],
+        force_explicit_mapping: bool,
+    ) -> Optional[list[str]]:
+        """
+        Build explicit subtitle stream maps for input 0.
+
+        Returns None when no explicit subtitle mapping override is needed.
+        """
+        if not force_explicit_mapping and selected_languages is None:
+            return None
+
+        try:
+            info = self.probe.get_info(source_path)
+        except Exception as e:
+            logger.warning(
+                "Failed to inspect subtitle streams for language filtering: %s", e
+            )
+            return [] if force_explicit_mapping else None
+
+        subtitle_streams = info.get_subtitle_streams()
+        if not subtitle_streams:
+            return []
+
+        selected_indices: list[int] = []
+        if selected_languages is None:
+            if include_all:
+                selected_indices = [stream.index for stream in subtitle_streams]
+            else:
+                selected_indices = [subtitle_streams[0].index]
+        else:
+            for stream in subtitle_streams:
+                stream_lang = normalize_language_code(stream.tags.get("language")) or "und"
+                if should_include_subtitle_language(stream_lang, selected_languages):
+                    selected_indices.append(stream.index)
+
+        return [f"0:{stream_index}?" for stream_index in selected_indices]
+
     def _validate_output(
         self,
         job: Job,
@@ -656,6 +808,34 @@ class JobRunner:
             logger.debug(f"Cleaned up temp file: {job.temp_path}")
         except Exception as e:
             logger.warning(f"Failed to cleanup temp file: {e}")
+
+    def _carry_sidecar_subtitles(self, job: Job, sidecar_paths: list[Path]) -> None:
+        """Copy sidecar subtitle files next to output when fallback mode is 'carry'."""
+        if not sidecar_paths:
+            return
+
+        destination_path = job.output_path or job.source_path
+        destination_dir = destination_path.parent
+        destination_dir.mkdir(parents=True, exist_ok=True)
+
+        copied: list[str] = []
+        failed: list[str] = []
+        for sidecar in sidecar_paths:
+            try:
+                target = destination_dir / sidecar.name
+                if target.resolve() == sidecar.resolve():
+                    continue
+                shutil.copy2(sidecar, target)
+                copied.append(target.name)
+            except Exception as e:
+                failed.append(f"{sidecar.name} ({e})")
+
+        if copied:
+            logger.info("Carried subtitle sidecars: %s", ", ".join(copied))
+        if failed:
+            message = "Failed to carry subtitle sidecars: " + ", ".join(failed)
+            logger.warning(message)
+            job.add_warning(message)
 
     def _get_or_create_temp_source(
         self,

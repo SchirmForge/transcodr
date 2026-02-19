@@ -2,8 +2,13 @@
 
 from enum import Enum
 from pathlib import Path
-from typing import Optional
-from pydantic import BaseModel, Field, model_validator
+from typing import Literal, Optional, Union
+from pydantic import BaseModel, Field, field_validator, model_validator
+
+from src.core.subtitles import (
+    parse_requested_subtitle_languages,
+    parse_subtitle_fallback_mode,
+)
 
 
 class WatchfolderType(str, Enum):
@@ -102,6 +107,31 @@ class WatchfolderConfig(BaseModel):
         default=False,
         description="Always add profile name to output filename (useful for multi-profile extracts)"
     )
+    auto_embed_subtitles: bool = Field(
+        default=True,
+        description="Auto-detect and embed matching external subtitle files when available"
+    )
+    subtitles_languages: Union[Literal["all"], list[str]] = Field(
+        default="all",
+        description="Subtitle language filter: 'all' or list of language codes (eng, fre, spa, ...). Unknown language subtitles are always included when filtering.",
+    )
+    subtitle_fallback_mode: Literal["carry", "skip", "fail"] = Field(
+        default="carry",
+        description="Behavior when an external subtitle is detected but cannot be embedded",
+    )
+
+    @field_validator('subtitles_languages', mode='before')
+    @classmethod
+    def normalize_subtitles_languages(cls, v):
+        """Normalize subtitle language selection."""
+        parsed = parse_requested_subtitle_languages(v)
+        return parsed if parsed is not None else "all"
+
+    @field_validator('subtitle_fallback_mode', mode='before')
+    @classmethod
+    def normalize_subtitle_fallback_mode(cls, v):
+        """Normalize subtitle fallback mode."""
+        return parse_subtitle_fallback_mode(v)
 
     @model_validator(mode='after')
     def validate_folder_options(self) -> 'WatchfolderConfig':

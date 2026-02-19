@@ -1,6 +1,8 @@
 """FastAPI application for Transcodr daemon."""
 
 import logging
+import os
+import shutil
 from contextlib import asynccontextmanager
 from datetime import datetime
 from pathlib import Path
@@ -14,7 +16,10 @@ from fastapi.staticfiles import StaticFiles
 from .models import (
     BrowseEntry,
     BrowseResponse,
+    ConfigLocationsInfo,
     ConfigUpdateRequest,
+    DiskLocationInfo,
+    DiskUsageInfo,
     DaemonStatus,
     EncodingRequest,
     JobInfo,
@@ -43,6 +48,131 @@ _watchfolder_service: Optional[WatchfolderService] = None
 _config = None
 
 VERSION = "0.3.6"
+
+def _build_disk_usage(path: str) -> Optional[DiskUsageInfo]:
+    """Build disk usage info for a path."""
+    try:
+        usage = shutil.disk_usage(path)
+    except Exception:
+        return None
+
+    used = usage.total - usage.free
+    percent_used = (used / usage.total * 100.0) if usage.total > 0 else 0.0
+
+    return DiskUsageInfo(
+        path=path,
+        total_bytes=usage.total,
+        used_bytes=used,
+        free_bytes=usage.free,
+        percent_used=round(percent_used, 1),
+    )
+
+
+def _resolve_usage_path(path: Path) -> Path:
+    """Resolve path for disk queries, falling back to nearest existing parent."""
+    expanded = expand_path(path)
+    if not expanded.is_absolute():
+        expanded = (Path.cwd() / expanded)
+
+    try:
+        resolved = expanded.resolve()
+    except Exception:
+        resolved = expanded
+
+    candidate = resolved
+    while not candidate.exists() and candidate.parent != candidate:
+        candidate = candidate.parent
+
+    if candidate.exists():
+        return candidate
+    return Path("/")
+
+
+def _find_mount_point(path: Path) -> Path:
+    """Find mount point for a path by walking parents."""
+    current = _resolve_usage_path(path)
+
+    while True:
+        try:
+            if os.path.ismount(current):
+                return current
+        except Exception:
+            pass
+
+        if current.parent == current:
+            return current
+        current = current.parent
+
+
+def _get_disk_usage_summary(
+    disk_locations: list[DiskLocationInfo],
+) -> list[DiskUsageInfo]:
+    """Get deduplicated mount usage summary from disk locations."""
+    disks: list[DiskUsageInfo] = []
+    seen_paths: set[str] = set()
+
+    for location in disk_locations:
+        if location.mount_path in seen_paths:
+            continue
+        seen_paths.add(location.mount_path)
+        disks.append(
+            DiskUsageInfo(
+                path=location.mount_path,
+                total_bytes=location.total_bytes,
+                used_bytes=location.used_bytes,
+                free_bytes=location.free_bytes,
+                percent_used=location.percent_used,
+            )
+        )
+
+    disks.sort(key=lambda d: (d.path != "/", d.path))
+    return disks
+
+
+def _get_disk_location_summary(
+    config_locations: Optional[ConfigLocationsInfo],
+) -> list[DiskLocationInfo]:
+    """Get disk usage mapped to key runtime locations."""
+    locations: list[DiskLocationInfo] = []
+    usage_cache: dict[str, tuple[Path, DiskUsageInfo]] = {}
+
+    items: list[tuple[str, Path]] = [("System (/)", Path("/"))]
+    if config_locations:
+        items.extend(
+            [
+                ("Config", Path(config_locations.config_dir)),
+                ("Source", Path(config_locations.root_media)),
+                ("Temp", Path(config_locations.temp_dir)),
+                ("Backup", Path(config_locations.backup_dir)),
+            ]
+        )
+        if config_locations.log_dir:
+            items.append(("Logs", Path(config_locations.log_dir)))
+
+    for label, path in items:
+        mount_path_obj = _find_mount_point(path)
+        mount_path = str(mount_path_obj)
+        if mount_path not in usage_cache:
+            usage_path = _resolve_usage_path(path)
+            usage = _build_disk_usage(str(usage_path))
+            if not usage:
+                continue
+            usage_cache[mount_path] = (usage_path, usage)
+
+        _, usage = usage_cache[mount_path]
+        locations.append(
+            DiskLocationInfo(
+                label=label,
+                path=str(path),
+                mount_path=mount_path,
+                total_bytes=usage.total_bytes,
+                used_bytes=usage.used_bytes,
+                free_bytes=usage.free_bytes,
+                percent_used=usage.percent_used,
+            )
+        )
+
+    return locations
 
 
 @asynccontextmanager
@@ -147,6 +277,39 @@ async def get_status():
     hw = HardwareCapabilities()
     hardware = hw.get_summary()
 
+    config_dir = expand_path(_config.get_config_dir()) if _config else ConfigManager.get_config_dir()
+    config_file = expand_path(ConfigManager.get_default_config_path())
+    profiles_dir = expand_path(_config.get_profiles_dir()) if _config else config_dir / "profiles"
+    watchfolders_dir = config_dir / "watchfolders"
+    jobs_db = expand_path(_config.get_jobs_db_path()) if _config else config_dir / "jobs.db"
+    root_media = expand_path(_config.storage.root_media) if _config else Path.home() / "Videos"
+    temp_dir = expand_path(_config.storage.temp_dir) if _config else Path("/tmp/transcodr")
+    log_dir = expand_path(_config.logging.dir) if (_config and _config.logging.dir) else None
+
+    backup_raw = Path(
+        os.path.expandvars(
+            os.path.expanduser(
+                str(_config.storage.backup_dir if _config else "./.originals")
+            )
+        )
+    )
+    backup_dir = backup_raw if backup_raw.is_absolute() else root_media / backup_raw
+    backup_dir = expand_path(backup_dir)
+
+    config_locations = ConfigLocationsInfo(
+        config_file=str(config_file),
+        config_dir=str(config_dir),
+        profiles_dir=str(profiles_dir),
+        watchfolders_dir=str(watchfolders_dir),
+        jobs_db=str(jobs_db),
+        root_media=str(root_media),
+        temp_dir=str(temp_dir),
+        log_dir=str(log_dir) if log_dir else None,
+        backup_dir=str(backup_dir),
+    )
+    disk_locations = _get_disk_location_summary(config_locations)
+    disks = _get_disk_usage_summary(disk_locations)
+
     return DaemonStatus(
         running=True,
         version=VERSION,
@@ -154,6 +317,9 @@ async def get_status():
         queue=queue_info,
         watch_folders=[],  # Config-based watchfolders are listed via /watchfolders endpoint
         hardware=hardware,
+        disks=disks,
+        disk_locations=disk_locations,
+        config_locations=config_locations,
         config_path=str(ConfigManager.get_default_config_path()),
     )
 
