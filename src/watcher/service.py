@@ -34,6 +34,7 @@ class WatchfolderService:
         self.job_queue = job_queue
         self._command_watchers: dict[str, CommandFileWatcher] = {}
         self._media_watchers: dict[str, MediaFileWatcher] = {}
+        self._invalid_watchers: dict[str, dict] = {}  # path → {config, errors}
         self._root_media: Optional[Path] = None  # Set in start()
         self._validated_profile_destinations: set[str] = set()  # Track validated paths
 
@@ -52,6 +53,7 @@ class WatchfolderService:
         # Create profile manager for validation
         profile_manager = get_profile_manager()
         self._validated_profile_destinations.clear()  # Reset on start/reload
+        self._invalid_watchers.clear()  # Reset invalid tracking on start/reload
 
         for config in configs:
             # Validate watchfolder before starting
@@ -61,7 +63,13 @@ class WatchfolderService:
             if errors:
                 for error in errors:
                     logger.error(f"Watchfolder {config.watchfolder_location}: {error}")
-                logger.error(f"Skipping invalid watchfolder: {config.watchfolder_location}")
+                logger.warning(
+                    f"Watchfolder {config.watchfolder_location} disabled — invalid configuration"
+                )
+                self._invalid_watchers[str(config.watchfolder_location)] = {
+                    "config": config,
+                    "errors": errors,
+                }
                 continue
 
             if config.watchfolder_type == WatchfolderType.COMMAND:
@@ -199,6 +207,7 @@ class WatchfolderService:
         for location, watcher in self._media_watchers.items():
             await watcher.stop()
         self._media_watchers.clear()
+        self._invalid_watchers.clear()
 
     def get_active_watchers(self) -> dict[str, list[dict]]:
         """Get dict of active watchfolder info by type."""
@@ -231,6 +240,28 @@ class WatchfolderService:
                 "pending_files": len(watcher._pending_files),
                 "submitted_jobs": len(watcher._submitted_jobs),
             })
+
+        for path, info in self._invalid_watchers.items():
+            config = info["config"]
+            entry = {
+                "id": path,
+                "path": path,
+                "scan_interval": config.scan_interval,
+                "active": False,
+                "paused": False,
+                "error": "; ".join(info["errors"]),
+            }
+            if config.watchfolder_type == WatchfolderType.MEDIA:
+                entry["profiles"] = config.profiles
+                if config.use_profile_destination:
+                    entry["destination"] = "profile"
+                    entry["use_profile_destination"] = True
+                elif config.destination:
+                    entry["destination"] = str(config.destination)
+                    entry["use_profile_destination"] = False
+                media_list.append(entry)
+            else:
+                command_list.append(entry)
 
         return {
             "command": command_list,
@@ -272,6 +303,29 @@ class WatchfolderService:
                 "pending_files": len(watcher._pending_files),
                 "submitted_jobs": len(watcher._submitted_jobs),
             }
+
+        # Check invalid watchers
+        if folder_id in self._invalid_watchers:
+            info = self._invalid_watchers[folder_id]
+            config = info["config"]
+            entry = {
+                "id": folder_id,
+                "path": folder_id,
+                "type": config.watchfolder_type.value,
+                "scan_interval": config.scan_interval,
+                "active": False,
+                "paused": False,
+                "error": "; ".join(info["errors"]),
+            }
+            if config.watchfolder_type == WatchfolderType.MEDIA:
+                entry["profiles"] = config.profiles
+                if config.use_profile_destination:
+                    entry["destination"] = "profile"
+                    entry["use_profile_destination"] = True
+                elif config.destination:
+                    entry["destination"] = str(config.destination)
+                    entry["use_profile_destination"] = False
+            return entry
 
         return None
 

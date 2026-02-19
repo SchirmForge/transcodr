@@ -111,6 +111,7 @@ export interface WatchFolderInfo {
   active: boolean
   paused: boolean
   scan_interval: number
+  error?: string  // set when watchfolder failed validation (missing folder, etc.)
   // Media watcher specific fields (optional for command watchers)
   profiles?: string[]
   destination?: string
@@ -144,6 +145,7 @@ export interface ProfileInfo {
   crf?: number
   source: 'builtin' | 'user'
   destination?: string | null
+  error?: string  // set when profile has an invalid path (missing destination folder, etc.)
   [key: string]: unknown
 }
 

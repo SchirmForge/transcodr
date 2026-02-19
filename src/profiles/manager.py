@@ -1,6 +1,7 @@
 """Profile management - loading, validation, and inheritance."""
 
 import logging
+import os
 from pathlib import Path
 from typing import Optional
 import yaml
@@ -261,7 +262,7 @@ class ProfileManager:
         """
         try:
             profile = self.load_profile(name)
-            return {
+            info = {
                 "name": profile.name,
                 "description": profile.description or "No description",
                 "codec": profile.video.codec,
@@ -273,6 +274,14 @@ class ProfileManager:
                 "tags": profile.tags,
                 "destination": profile.destination,
             }
+            # Validate destination folder if set (skip $root_media — resolved at watchfolder level)
+            if profile.destination and "$root_media" not in profile.destination:
+                dest_path = Path(os.path.expandvars(os.path.expanduser(profile.destination)))
+                if not dest_path.exists():
+                    info["error"] = f"Destination does not exist: {dest_path}"
+                elif not dest_path.is_dir():
+                    info["error"] = f"Destination is not a directory: {dest_path}"
+            return info
         except Exception as e:
             return {"name": name, "error": str(e)}
 

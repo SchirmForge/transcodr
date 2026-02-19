@@ -6,15 +6,22 @@ function ProfileCard({ profile }: { profile: ProfileInfo }) {
     <div className="p-4 bg-white dark:bg-gray-800 rounded-lg shadow">
       <div className="flex justify-between items-start mb-2">
         <h3 className="font-medium text-gray-900 dark:text-gray-100">{profile.name}</h3>
-        <span
-          className={`px-2 py-1 text-xs font-medium rounded ${
-            profile.source === 'builtin'
-              ? 'bg-blue-100 dark:bg-blue-900/50 text-blue-800 dark:text-blue-300'
-              : 'bg-purple-100 dark:bg-purple-900/50 text-purple-800 dark:text-purple-300'
-          }`}
-        >
-          {profile.source}
-        </span>
+        <div className="flex items-center gap-1.5 shrink-0 ml-2">
+          {profile.error && (
+            <span className="px-2 py-1 text-xs font-medium rounded bg-red-100 dark:bg-red-900/50 text-red-800 dark:text-red-300">
+              Invalid
+            </span>
+          )}
+          <span
+            className={`px-2 py-1 text-xs font-medium rounded ${
+              profile.source === 'builtin'
+                ? 'bg-blue-100 dark:bg-blue-900/50 text-blue-800 dark:text-blue-300'
+                : 'bg-purple-100 dark:bg-purple-900/50 text-purple-800 dark:text-purple-300'
+            }`}
+          >
+            {profile.source}
+          </span>
+        </div>
       </div>
 
       {profile.description && (
@@ -47,6 +54,12 @@ function ProfileCard({ profile }: { profile: ProfileInfo }) {
           </div>
         )}
       </dl>
+
+      {profile.error && (
+        <div className="mt-3 p-2 bg-red-50 dark:bg-red-900/20 rounded border border-red-200 dark:border-red-800">
+          <p className="text-xs text-red-600 dark:text-red-400">{profile.error}</p>
+        </div>
+      )}
     </div>
   )
 }

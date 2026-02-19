@@ -33,16 +33,18 @@ function WatchfolderCard({
         <div className="flex items-center gap-2 ml-4">
           <span
             className={`px-2 py-1 text-xs font-medium rounded ${
-              folder.paused
-                ? 'bg-yellow-100 dark:bg-yellow-900/50 text-yellow-800 dark:text-yellow-300'
-                : folder.active
-                  ? 'bg-green-100 dark:bg-green-900/50 text-green-800 dark:text-green-300'
-                  : 'bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-300'
+              folder.error
+                ? 'bg-red-100 dark:bg-red-900/50 text-red-800 dark:text-red-300'
+                : folder.paused
+                  ? 'bg-yellow-100 dark:bg-yellow-900/50 text-yellow-800 dark:text-yellow-300'
+                  : folder.active
+                    ? 'bg-green-100 dark:bg-green-900/50 text-green-800 dark:text-green-300'
+                    : 'bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-300'
             }`}
           >
-            {folder.paused ? 'Paused' : folder.active ? 'Active' : 'Inactive'}
+            {folder.error ? 'Invalid' : folder.paused ? 'Paused' : folder.active ? 'Active' : 'Inactive'}
           </span>
-          {folder.paused ? (
+          {!folder.error && folder.paused ? (
             <button
               onClick={onResume}
               disabled={isResuming}
@@ -50,7 +52,7 @@ function WatchfolderCard({
             >
               Resume
             </button>
-          ) : folder.active ? (
+          ) : !folder.error && folder.active ? (
             <button
               onClick={onPause}
               disabled={isPausing}
@@ -61,6 +63,12 @@ function WatchfolderCard({
           ) : null}
         </div>
       </div>
+
+      {folder.error && (
+        <div className="mt-2 p-2 bg-red-50 dark:bg-red-900/20 rounded border border-red-200 dark:border-red-800">
+          <p className="text-xs text-red-600 dark:text-red-400">{folder.error}</p>
+        </div>
+      )}
 
       <div className="mt-3 grid grid-cols-2 gap-x-4 gap-y-1 text-sm">
         <div>
@@ -126,9 +134,11 @@ const statusOptions = [
   { value: 'active', label: 'Active' },
   { value: 'paused', label: 'Paused' },
   { value: 'inactive', label: 'Inactive' },
+  { value: 'invalid', label: 'Invalid' },
 ]
 
 function getWatchfolderStatus(folder: WatchFolderInfo): string {
+  if (folder.error) return 'invalid'
   if (folder.paused) return 'paused'
   if (folder.active) return 'active'
   return 'inactive'
