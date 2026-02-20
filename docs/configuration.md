@@ -24,7 +24,7 @@ pip install -r requirements.txt
 
 ## Overview
 
-Video Transcode uses a configuration directory located at:
+Transcodr uses a configuration directory located at:
 ```
 ~/.config/transcodr/
 ```
@@ -73,11 +73,12 @@ ls -la ~/.config/transcodr/profiles/
 ## Configuration File
 
 The main configuration file is `~/.config/transcodr/config.yaml`.
+As of `v0.3.6`, the generated default file comes from `src/config/default-config.yml`.
 
 ### Default Configuration
 
 ```yaml
-# Video Transcode Configuration
+# Transcodr Configuration
 
 # FFmpeg settings
 ffmpeg:
@@ -93,12 +94,12 @@ daemon:
 
 # Storage settings
 storage:
-  temp_dir: /tmp/transcodr    # Temporary directory for encoding
+  temp_dir: /tmp/transcodr         # Temporary directory for encoding
   backup_originals: true           # Create backup of original files
   backup_dir: ./.originals         # Backup directory (relative or absolute)
   min_free_space_gb: 10            # Minimum free space required (GB)
+  root_media: /media               # Base path for $root_media placeholder (supports ~ and $USER)
   on_extension_mismatch: rename    # rename (use correct ext), reject (fail job), keep (keep source ext)
-  root_media: ~/Videos             # Base path for  placeholder (supports ~ and $USER)
 
 # Logging settings
 logging:
@@ -146,8 +147,8 @@ logging:
   - `rename` (default) - Use correct extension, delete original, complete with warning
   - `reject` - Fail the job with descriptive error
   - `keep` - Keep source extension (wrong container content), complete with warning
-- **root_media**: Base path for `` placeholder
-  - Default: `~/Videos`
+- **root_media**: Base path for `$root_media` placeholder
+  - Default in generated config: `/media`
   - Supports tilde expansion (`~`)
   - Supports environment variables (`$USER`, `$HOME`)
   - Example: `/home/$USER/media` or `/mnt/nas/videos`
@@ -157,6 +158,9 @@ logging:
       root_media: /mnt/nas/videos
       backup_dir: /backups    # Expands to /mnt/nas/videos/backups
     ```
+- **profile_name_separator**: Separator used when `append_profile_name: true`
+  - Default: `_`
+  - Example: `movie_x265-fast.mkv` vs `movie-x265-fast.mkv`
 
 #### Logging Settings
 
@@ -214,12 +218,16 @@ cat ~/.config/transcodr/config.yaml
 python -c "
 from src.config.manager import ConfigManager
 config = ConfigManager.load_config()
-issues = ConfigManager.validate_config(config)
-if issues:
-    print('Issues found:')
-    for issue in issues:
-        print(f'  - {issue}')
-else:
+errors, warnings = ConfigManager.validate_config(config)
+if errors:
+    print('Errors found:')
+    for error in errors:
+        print(f'  - {error}')
+if warnings:
+    print('Warnings:')
+    for warning in warnings:
+        print(f'  - {warning}')
+if not errors and not warnings:
     print('Configuration is valid')
 "
 ```
@@ -278,11 +286,13 @@ volumes:
 ```
 
 When `TRANSCODR_CONFIG_DIR` is not set, the default `~/.config/transcodr` is used. The CLI `--config` flag still takes precedence for the config file path when specified.
+Since `v0.3.6`, profile and watchfolder loading also follows this directory consistently.
 
 ## Settings Web UI
 
 Starting with v0.3.5, all configuration sections can be edited directly from the Web UI under **Settings**:
 
+- **General** — reload configuration/watchfolders without daemon restart
 - **Storage** — root media, temp directory, backup options, free space, extension mismatch policy, profile name separator
 - **Encoding** — FFmpeg binary path, hardware acceleration selector, duration tolerance, detected hardware display
 - **Daemon** — host, port, max concurrent jobs (changes require daemon restart)

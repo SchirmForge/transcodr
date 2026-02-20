@@ -6,6 +6,8 @@
 
 Transcodr is a local‑first video transcoding platform for creators and small studios. It runs a reliable daemon with a REST API and a fast Web UI, so you can batch encode, automate with watchfolders, and keep full control of your media.
 
+Current documented release: **v0.3.6**.
+
 ## Why Transcodr
 
 - Own your pipeline and avoid expensive cloud workflows
@@ -22,7 +24,16 @@ Transcodr is a local‑first video transcoding platform for creators and small s
 - Watchfolders for automated ingest
 - Safe replace or destination outputs
 - SQLite‑backed queue that survives restarts
+- Config editing via API and Web UI (Storage, Encoding, Daemon, Logging)
+- Live configuration reload (`POST /api/reload`) from UI and API
 - Multi‑daemon orchestration (planned, not yet implemented)
+
+## What’s New Through v0.3.6
+
+- Docker deployment support with helper script: `./docker/deploy.sh`
+- Config directory override via `TRANSCODR_CONFIG_DIR` for Docker/self-hosted layouts
+- Extension mismatch policy for replace mode (`rename`, `reject`, `keep`) with warning tracking
+- Warning job status in history and API (`warning_message`, filter, clear-warning endpoint)
 
 ## Get Started
 

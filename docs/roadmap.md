@@ -230,6 +230,23 @@
 
 ---
 
+## Completed Features (v0.3.6)
+
+### Configuration & Runtime
+- [x] Default config file generated from `src/config/default-config.yml`
+- [x] Profiles and watchfolders fully respect `TRANSCODR_CONFIG_DIR`
+- [x] Daemon logging reconfigured after config load so `logging.dir` is honored
+- [x] Shared profile cache (`ProfileStore`) with explicit cache clear on reload
+
+### Web UI
+- [x] Added **Reload Configuration** action in Settings > General (`POST /api/reload`)
+- [x] Added manual **Refresh** actions on Profiles and Watchfolders pages
+
+### Docker
+- [x] Added `docker/deploy.sh` helper (`--no-cache`, `--help`)
+
+---
+
 ## Planned Features
 
 ### Version 0.4: Subtitles Management
@@ -294,12 +311,13 @@
 - Distributed encoding (0.4.2)
 - Video filters (0.4.3)
 
-### v0.3 (Current - v0.3.5 Released)
+### v0.3 (Current - v0.3.6 Released)
 - ✅ Web UI basic layout (0.3.1) - **DONE**
 - ✅ Bug fixes (0.3.2) - **DONE**
 - ✅ Manual encoding with web UI (0.3.3) - **DONE**
 - ✅ Extension mismatch handling + warning status (0.3.4) - **DONE**
 - ✅ Docker preparation + settings UI (0.3.5) - **DONE**
+- ✅ Config/runtime polish + reload UX improvements (0.3.6) - **DONE**
 
 ### v0.2 (v0.2.3 Released)
 - ✅ Watch folder improvements (0.2.1) - **DONE**
@@ -309,7 +327,15 @@
 - Notifications (0.2.5)
 - Audio file encoding (0.2.6)
 
-### v0.3.5 (Current)
+### v0.3.6 (Current)
+- Default config generated from `src/config/default-config.yml`
+- Profiles/watchfolders now consistently use `TRANSCODR_CONFIG_DIR`
+- Logging reconfigured after config load so `logging.dir` is applied
+- Settings > General includes Reload Configuration (`POST /api/reload`)
+- Profiles/Watchfolders pages include manual Refresh actions
+- Docker helper script: `docker/deploy.sh`
+
+### v0.3.5
 - Docker support: Dockerfile, docker-compose.yml, GPU passthrough
 - `TRANSCODR_CONFIG_DIR` environment variable for config directory override
 - Settings API: `GET /api/config`, `PUT /api/config`

@@ -14,6 +14,8 @@ No authentication is currently required. The API binds to localhost by default f
 http://localhost:8765/api
 ```
 
+Examples below reflect `v0.3.6`.
+
 ---
 
 ## Status Endpoints
@@ -26,7 +28,7 @@ Get daemon status and queue information.
 ```json
 {
   "running": true,
-  "version": "0.3.4",
+  "version": "0.3.6",
   "uptime_seconds": 3600.5,
   "queue": {
     "total_jobs": 15,
@@ -37,14 +39,45 @@ Get daemon status and queue information.
     "max_concurrent": 2,
     "current_concurrent": 2
   },
-  "watch_folders": [...],
+  "watch_folders": [],
   "hardware": {
     "vaapi": true,
     "nvenc": false,
     "qsv": false,
     "recommended": "vaapi"
   },
-  "config_path": "/home/user/.config/transcodr/config.yaml"
+  "disks": [
+    {
+      "path": "/",
+      "total_bytes": 1000000000000,
+      "used_bytes": 500000000000,
+      "free_bytes": 500000000000,
+      "percent_used": 50.0
+    }
+  ],
+  "disk_locations": [
+    {
+      "label": "Config",
+      "path": "/config",
+      "mount_path": "/",
+      "total_bytes": 1000000000000,
+      "used_bytes": 500000000000,
+      "free_bytes": 500000000000,
+      "percent_used": 50.0
+    }
+  ],
+  "config_locations": {
+    "config_file": "/config/config.yaml",
+    "config_dir": "/config",
+    "profiles_dir": "/config/profiles",
+    "watchfolders_dir": "/config/watchfolders",
+    "jobs_db": "/config/jobs.db",
+    "root_media": "/media",
+    "temp_dir": "/tmp/transcodr",
+    "log_dir": null,
+    "backup_dir": "/media/.originals"
+  },
+  "config_path": "/config/config.yaml"
 }
 ```
 
@@ -111,7 +144,7 @@ List all jobs.
 **Query Parameters:**
 | Parameter | Type | Description |
 |-----------|------|-------------|
-| `status` | string | Filter by status (pending, running, completed, warning, failed) |
+| `status` | string | Filter by status (`pending`, `queued`, `running`, `completed`, `warning`, `failed`, `cancelled`, `interrupted`) |
 | `limit` | int | Maximum number of jobs to return |
 | `offset` | int | Number of jobs to skip |
 
@@ -199,7 +232,7 @@ Submit a new encoding job.
     "abc12345-1234-5678-9abc-def012345678",
     "def67890-1234-5678-9abc-def012345678"
   ],
-  "message": "Created 2 job(s)"
+  "message": "Submitted 2 job(s)"
 }
 ```
 
@@ -357,7 +390,7 @@ DELETE /api/profiles/my-custom?confirm=true
 
 ### GET /api/watchfolders
 
-List all watchfolders (config-based and API-registered).
+List all active config-based watchfolders.
 
 **Response:**
 ```json
@@ -396,11 +429,10 @@ Get watchfolder details.
 
 Remove a watchfolder. Config-based watchfolders cannot be removed via API.
 
-**Response:**
+**Typical Error (config-defined watchfolder):**
 ```json
 {
-  "success": true,
-  "message": "Watchfolder removed: my-folder"
+  "detail": "Cannot remove config-based watchfolder via API. Delete the YAML file instead."
 }
 ```
 
@@ -494,6 +526,78 @@ Clear warning jobs (completed with warnings) from history.
 
 ---
 
+## Configuration Endpoints
+
+### GET /api/config
+
+Get the current daemon configuration used by the running process.
+
+**Response:**
+```json
+{
+  "ffmpeg": {
+    "binary_path": "ffmpeg",
+    "hardware_accel": "auto"
+  },
+  "daemon": {
+    "host": "127.0.0.1",
+    "port": 8765,
+    "max_concurrent_jobs": 1
+  },
+  "storage": {
+    "temp_dir": "/tmp/transcodr",
+    "backup_originals": true,
+    "backup_dir": "./.originals",
+    "min_free_space_gb": 10,
+    "root_media": "/media",
+    "profile_name_separator": "_",
+    "on_extension_mismatch": "rename"
+  },
+  "logging": {
+    "level": "INFO",
+    "dir": null,
+    "rotation": "daily",
+    "per_job_logs": true
+  },
+  "validation": {
+    "duration_tolerance": 10.0
+  }
+}
+```
+
+### PUT /api/config
+
+Partially update daemon configuration, validate it, save to disk, and apply it live.
+Only provided sections are updated.
+
+**Request Body (example):**
+```json
+{
+  "storage": {
+    "root_media": "/mnt/media",
+    "on_extension_mismatch": "rename"
+  },
+  "logging": {
+    "level": "WARNING"
+  }
+}
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "message": "Configuration saved and reloaded",
+  "warnings": []
+}
+```
+
+**Notes:**
+- Host/port changes are saved but require daemon restart to take effect.
+- Validation errors return `400` with field details.
+
+---
+
 ## Admin Endpoints
 
 ### POST /api/reload
@@ -505,7 +609,28 @@ Reload configuration and watchfolders without restarting the daemon.
 {
   "success": true,
   "message": "Configuration reloaded successfully",
-  "config_path": "/home/user/.config/transcodr/config.yaml"
+  "config_path": "/config/config.yaml",
+  "config": {
+    "daemon": {
+      "host": "127.0.0.1",
+      "port": 8765,
+      "max_concurrent_jobs": 1
+    },
+    "storage": {
+      "root_media": "/media",
+      "temp_dir": "/tmp/transcodr",
+      "backup_dir": "./.originals",
+      "backup_originals": true,
+      "min_free_space_gb": 10,
+      "on_extension_mismatch": "rename"
+    },
+    "ffmpeg": {
+      "hardware_accel": "auto"
+    },
+    "logging": {
+      "level": "INFO"
+    }
+  }
 }
 ```
 
