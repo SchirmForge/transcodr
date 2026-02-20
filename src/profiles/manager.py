@@ -262,6 +262,7 @@ class ProfileManager:
         """
         try:
             profile = self.load_profile(name)
+            profile_file = self._find_profile_file(name)
             info = {
                 "name": profile.name,
                 "description": profile.description or "No description",
@@ -273,6 +274,7 @@ class ProfileManager:
                 "audio": "copy" if profile.audio.copy_streams else profile.audio.codec,
                 "tags": profile.tags,
                 "destination": profile.destination,
+                "file_path": str(profile_file) if profile_file else None,
             }
             # Validate destination folder if set (skip $root_media — resolved at watchfolder level)
             if profile.destination and "$root_media" not in profile.destination:

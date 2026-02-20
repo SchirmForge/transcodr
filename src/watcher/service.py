@@ -35,6 +35,7 @@ class WatchfolderService:
         self._command_watchers: dict[str, CommandFileWatcher] = {}
         self._media_watchers: dict[str, MediaFileWatcher] = {}
         self._invalid_watchers: dict[str, dict] = {}  # path → {config, errors}
+        self._watcher_yaml_files: dict[str, Path] = {}  # path → source yaml file
         self._root_media: Optional[Path] = None  # Set in start()
         self._validated_profile_destinations: set[str] = set()  # Track validated paths
 
@@ -47,15 +48,17 @@ class WatchfolderService:
         main_config = ConfigManager.load_config()
         self._root_media = main_config.storage.root_media
 
-        configs = WatchfolderConfigManager.load_configs()
-        logger.info(f"Loaded {len(configs)} watchfolder configuration(s)")
+        configs_with_paths = WatchfolderConfigManager.load_configs_with_paths()
+        logger.info(f"Loaded {len(configs_with_paths)} watchfolder configuration(s)")
 
         # Create profile manager for validation
         profile_manager = get_profile_manager()
         self._validated_profile_destinations.clear()  # Reset on start/reload
         self._invalid_watchers.clear()  # Reset invalid tracking on start/reload
+        self._watcher_yaml_files.clear()
 
-        for config in configs:
+        for config, yaml_file in configs_with_paths:
+            self._watcher_yaml_files[str(config.watchfolder_location)] = yaml_file
             # Validate watchfolder before starting
             errors, warnings = self._validate_watchfolder(config, profile_manager)
             for warning in warnings:
@@ -208,21 +211,25 @@ class WatchfolderService:
             await watcher.stop()
         self._media_watchers.clear()
         self._invalid_watchers.clear()
+        self._watcher_yaml_files.clear()
 
     def get_active_watchers(self) -> dict[str, list[dict]]:
         """Get dict of active watchfolder info by type."""
         command_list = []
         for path, watcher in self._command_watchers.items():
+            yaml_file = self._watcher_yaml_files.get(path)
             command_list.append({
                 "id": path,
                 "path": path,
                 "scan_interval": watcher.scan_interval,
                 "active": watcher._running,
                 "paused": getattr(watcher, '_paused', False),
+                "yaml_path": str(yaml_file) if yaml_file else None,
             })
 
         media_list = []
         for path, watcher in self._media_watchers.items():
+            yaml_file = self._watcher_yaml_files.get(path)
             dest_value = (
                 "profile" if watcher.config.use_profile_destination
                 else str(watcher.config.destination)
@@ -239,9 +246,11 @@ class WatchfolderService:
                 "paused": getattr(watcher, '_paused', False),
                 "pending_files": len(watcher._pending_files),
                 "submitted_jobs": len(watcher._submitted_jobs),
+                "yaml_path": str(yaml_file) if yaml_file else None,
             })
 
         for path, info in self._invalid_watchers.items():
+            yaml_file = self._watcher_yaml_files.get(path)
             config = info["config"]
             entry = {
                 "id": path,
@@ -250,6 +259,7 @@ class WatchfolderService:
                 "active": False,
                 "paused": False,
                 "errors": info["errors"],
+                "yaml_path": str(yaml_file) if yaml_file else None,
             }
             if config.watchfolder_type == WatchfolderType.MEDIA:
                 entry["profiles"] = config.profiles
@@ -270,6 +280,9 @@ class WatchfolderService:
 
     def get_watcher(self, folder_id: str) -> Optional[dict]:
         """Get a specific watcher by ID (path)."""
+        yaml_file = self._watcher_yaml_files.get(folder_id)
+        yaml_path_str = str(yaml_file) if yaml_file else None
+
         # Check command watchers
         if folder_id in self._command_watchers:
             watcher = self._command_watchers[folder_id]
@@ -280,6 +293,7 @@ class WatchfolderService:
                 "scan_interval": watcher.scan_interval,
                 "active": watcher._running,
                 "paused": getattr(watcher, '_paused', False),
+                "yaml_path": yaml_path_str,
             }
 
         # Check media watchers
@@ -302,6 +316,7 @@ class WatchfolderService:
                 "paused": getattr(watcher, '_paused', False),
                 "pending_files": len(watcher._pending_files),
                 "submitted_jobs": len(watcher._submitted_jobs),
+                "yaml_path": yaml_path_str,
             }
 
         # Check invalid watchers
@@ -316,6 +331,7 @@ class WatchfolderService:
                 "active": False,
                 "paused": False,
                 "errors": info["errors"],
+                "yaml_path": yaml_path_str,
             }
             if config.watchfolder_type == WatchfolderType.MEDIA:
                 entry["profiles"] = config.profiles
@@ -328,6 +344,10 @@ class WatchfolderService:
             return entry
 
         return None
+
+    def get_watcher_yaml_path(self, folder_id: str) -> Optional[Path]:
+        """Return the source YAML file path for a watchfolder, if tracked."""
+        return self._watcher_yaml_files.get(folder_id)
 
     def pause_watcher(self, folder_id: str) -> bool:
         """Pause a watcher by ID."""

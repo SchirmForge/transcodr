@@ -27,7 +27,7 @@ class WatchfolderConfigManager:
         logger.debug(f"Watchfolders config directory: {config_dir}")
 
     @staticmethod
-    def load_configs() -> list[WatchfolderConfig]:
+    def load_configs_with_paths() -> list[tuple[WatchfolderConfig, Path]]:
         """
         Load all watchfolder configurations from watchfolders directory.
 
@@ -35,13 +35,13 @@ class WatchfolderConfigManager:
         placeholder in all path values.
 
         Returns:
-            List of WatchfolderConfig objects
+            List of (WatchfolderConfig, yaml_file_path) tuples
         """
         watchfolders_dir = ConfigManager.get_watchfolders_config_dir()
-        configs = []
+        results = []
 
         if not watchfolders_dir.exists():
-            return configs
+            return results
 
         # Get root_media for $root_media expansion
         main_config = ConfigManager.load_config()
@@ -70,9 +70,14 @@ class WatchfolderConfigManager:
 
                     data = expand_value(data)
                     config = WatchfolderConfig(**data)
-                    configs.append(config)
+                    results.append((config, yaml_file))
                     logger.info(f"Loaded watchfolder config: {yaml_file.name} -> {config.watchfolder_location}")
             except Exception as e:
                 logger.error(f"Failed to load watchfolder config {yaml_file}: {e}")
 
-        return configs
+        return results
+
+    @staticmethod
+    def load_configs() -> list[WatchfolderConfig]:
+        """Load all watchfolder configurations (without source file paths)."""
+        return [config for config, _ in WatchfolderConfigManager.load_configs_with_paths()]

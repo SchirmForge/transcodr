@@ -522,6 +522,8 @@ async def resume_watchfolder(folder_id: str):
     raise HTTPException(status_code=404, detail=f"Watchfolder not found: {folder_id}")
 
 
+
+
 # =============================================================================
 # Queue Control Endpoints
 # =============================================================================
@@ -768,6 +770,33 @@ async def reload_config():
     except Exception as e:
         logger.error(f"Failed to reload configuration: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Failed to reload configuration: {e}")
+
+
+@api_router.get("/config-file", tags=["Admin"])
+async def get_config_file(path: str = Query(..., description="Absolute path to a config file")):
+    """
+    Return the raw text content of a config file.
+
+    Access is restricted to the config directory and the built-in profiles directory.
+    """
+    requested = Path(path).resolve()
+
+    # Allowed directories: user config dir and built-in profiles dir
+    config_dir = ConfigManager.get_config_dir().resolve()
+    builtin_dir = (Path(__file__).parent.parent / "profiles" / "builtin").resolve()
+
+    if not (requested.is_relative_to(config_dir) or requested.is_relative_to(builtin_dir)):
+        raise HTTPException(status_code=403, detail="Access denied: path outside allowed directories")
+
+    if not requested.exists() or not requested.is_file():
+        raise HTTPException(status_code=404, detail=f"File not found: {path}")
+
+    try:
+        content = requested.read_text()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to read file: {e}")
+
+    return {"path": str(requested), "content": content}
 
 
 @api_router.post("/purge", tags=["Admin"])

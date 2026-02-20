@@ -4,6 +4,46 @@ All notable changes to Transcodr are documented in this file.
 
 ---
 
+## v0.3.7
+
+### Invalid Watchfolders & Profiles
+- Invalid watchfolders (missing location, unknown profile, missing destination) are now tracked and visible in the UI instead of being silently discarded at startup/reload
+- Validation errors are logged per item and shown as an **Invalid** badge in the Web UI
+- Multiple errors per watchfolder are each displayed on their own line (expanded view)
+- Profile destination path validation: profiles with a non-existent destination folder show as Invalid
+
+### Web UI — Profiles & Watchfolders
+- Profile cards now show description, codec, and container by default (always visible)
+- Watchfolder cards now show the full path, assigned profiles, and output destination by default (always visible)
+- Added **media / command** type badge on watchfolder cards (mirrors builtin/user badge on profiles)
+- Error details, scan interval, file patterns, and runtime stats (pending/submitted) moved to expanded view
+- **See yaml…** button in expanded view opens a modal with the raw YAML source (selectable text, non-editable)
+
+### API
+- `GET /api/profiles/{name}/yaml` — returns raw YAML source of a profile file
+- `GET /api/watchfolders/{folder_id}/yaml` — returns raw YAML source of a watchfolder config file
+
+---
+
+## v0.3.6
+
+### Configuration & Runtime
+- Default config is now created from `src/config/default-config.yml` (single source for defaults)
+- `TRANSCODR_CONFIG_DIR` handling is consistent for `config.yaml`, `profiles/`, `watchfolders/`, and `jobs.db`
+- Shared profile cache via a single `ProfileStore` instance, with explicit cache clear on reload
+
+### Logging
+- Daemon now reconfigures logging after loading config, so `logging.dir` is applied correctly
+
+### Web UI
+- Added **Reload Configuration** action in `Settings > General` (calls `POST /api/reload`)
+- Added manual **Refresh** actions on Profiles and Watchfolders pages
+
+### Docker
+- Added `docker/deploy.sh` helper script with `--no-cache` and `--help`
+
+---
+
 ## v0.3.5
 
 ### Docker Support
@@ -35,27 +75,6 @@ All notable changes to Transcodr are documented in this file.
 ### Internal
 - Replaced hardcoded `DEFAULT_CONFIG_PATH` class attribute with `get_default_config_path()` static method
 - Updated all references across daemon, API, and CLI modules
-
----
-
-## v0.3.6
-
-### Configuration
-- Default config now loads from `src/config/default-config.yml` instead of inline strings
-- Profiles and watchfolders now respect `TRANSCODR_CONFIG_DIR` (fixes Docker mounts not being used)
-
-### Logging
-- Daemon reconfigures logging after config load so `logging.dir` is honored for file output
-
-### Profiles & Watchfolders
-- Shared profile cache via a single ProfileStore instance (clears on reload across daemon components)
-
-### Web UI
-- Added "Reload Configuration" in Settings > General (calls `/reload`)
-- Added "Refresh" buttons on Profiles and Watchfolders pages (client-side refetch)
-
-### Docker
-- Added `docker/deploy.sh` helper with `--no-cache` and `--help`
 
 ---
 

@@ -1,58 +1,54 @@
 import { useState } from 'react'
 import { useProfiles } from '../../hooks/useProfiles'
+import { useYamlModal } from '../../hooks/useYamlModal'
 import type { ProfileInfo } from '../../api/types'
+import { YamlModal } from '../../components/ui/YamlModal'
 
 function ProfileCard({ profile }: { profile: ProfileInfo }) {
   const [expanded, setExpanded] = useState(false)
+  const yaml = useYamlModal()
   const isInvalid = !!profile.error
 
   return (
-    <div className="bg-white dark:bg-gray-800 rounded-lg shadow">
-      {/* Header — always visible */}
-      <div className="flex items-center gap-2 p-4">
-        <button
-          onClick={() => setExpanded(e => !e)}
-          className="shrink-0 w-5 text-center text-gray-400 dark:text-gray-500 hover:text-gray-700 dark:hover:text-gray-200 font-mono text-sm leading-none"
-          title={expanded ? 'Collapse' : 'Expand'}
-        >
-          {expanded ? '−' : '+'}
-        </button>
-
-        <h3 className="font-medium text-gray-900 dark:text-gray-100 truncate flex-1 min-w-0">
-          {profile.name}
-        </h3>
-
-        <div className="flex items-center gap-1.5 shrink-0">
-          {isInvalid && (
-            <span className="px-2 py-1 text-xs font-medium rounded bg-red-100 dark:bg-red-900/50 text-red-800 dark:text-red-300">
-              Invalid
-            </span>
-          )}
-          <span
-            className={`px-2 py-1 text-xs font-medium rounded ${
-              profile.source === 'builtin'
-                ? 'bg-blue-100 dark:bg-blue-900/50 text-blue-800 dark:text-blue-300'
-                : 'bg-purple-100 dark:bg-purple-900/50 text-purple-800 dark:text-purple-300'
-            }`}
+    <>
+      <div className="bg-white dark:bg-gray-800 rounded-lg shadow">
+        {/* Header — always visible */}
+        <div className="flex items-center gap-2 p-4">
+          <button
+            onClick={() => setExpanded(e => !e)}
+            className="shrink-0 w-5 h-5 flex items-center justify-center rounded border border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 hover:border-gray-400 dark:hover:border-gray-500 text-xs font-bold leading-none"
+            title={expanded ? 'Collapse' : 'Expand'}
           >
-            {profile.source}
-          </span>
+            {expanded ? '−' : '+'}
+          </button>
+
+          <h3 className="font-medium text-gray-900 dark:text-gray-100 truncate flex-1 min-w-0">
+            {profile.name}
+          </h3>
+
+          <div className="flex items-center gap-1.5 shrink-0">
+            {isInvalid && (
+              <span className="px-2 py-1 text-xs font-medium rounded bg-red-100 dark:bg-red-900/50 text-red-800 dark:text-red-300">
+                Invalid
+              </span>
+            )}
+            <span
+              className={`px-2 py-1 text-xs font-medium rounded ${
+                profile.source === 'builtin'
+                  ? 'bg-blue-100 dark:bg-blue-900/50 text-blue-800 dark:text-blue-300'
+                  : 'bg-purple-100 dark:bg-purple-900/50 text-purple-800 dark:text-purple-300'
+              }`}
+            >
+              {profile.source}
+            </span>
+          </div>
         </div>
-      </div>
 
-      {/* Details — only when expanded */}
-      {expanded && (
-        <div className="px-4 pb-4 border-t border-gray-100 dark:border-gray-700 pt-3">
+        {/* Basic info — always visible */}
+        <div className="px-4 pb-3 border-t border-gray-100 dark:border-gray-700 pt-2">
           {profile.description && (
-            <p className="text-sm text-gray-600 dark:text-gray-400 mb-3">{profile.description}</p>
+            <p className="text-sm text-gray-600 dark:text-gray-400 mb-2">{profile.description}</p>
           )}
-
-          {isInvalid && (
-            <div className="mb-3 p-2 bg-red-50 dark:bg-red-900/20 rounded border border-red-200 dark:border-red-800">
-              <p className="text-xs text-red-600 dark:text-red-400">{profile.error as string}</p>
-            </div>
-          )}
-
           <dl className="text-sm space-y-1">
             {profile.codec && (
               <div className="flex justify-between">
@@ -66,22 +62,66 @@ function ProfileCard({ profile }: { profile: ProfileInfo }) {
                 <dd className="text-gray-900 dark:text-gray-100">{profile.container}</dd>
               </div>
             )}
-            {profile.preset && (
-              <div className="flex justify-between">
-                <dt className="text-gray-500 dark:text-gray-400">Preset</dt>
-                <dd className="text-gray-900 dark:text-gray-100">{profile.preset}</dd>
-              </div>
-            )}
-            {profile.crf !== undefined && (
-              <div className="flex justify-between">
-                <dt className="text-gray-500 dark:text-gray-400">CRF</dt>
-                <dd className="text-gray-900 dark:text-gray-100">{profile.crf}</dd>
-              </div>
-            )}
           </dl>
         </div>
+
+        {/* Expanded details */}
+        {expanded && (
+          <div className="px-4 pb-4 border-t border-gray-100 dark:border-gray-700 pt-3">
+            {isInvalid && (
+              <div className="mb-3 p-2 bg-red-50 dark:bg-red-900/20 rounded border border-red-200 dark:border-red-800">
+                <p className="text-xs text-red-600 dark:text-red-400">{profile.error as string}</p>
+              </div>
+            )}
+
+            <dl className="text-sm space-y-1 mb-3">
+              {profile.preset && (
+                <div className="flex justify-between">
+                  <dt className="text-gray-500 dark:text-gray-400">Preset</dt>
+                  <dd className="text-gray-900 dark:text-gray-100">{profile.preset}</dd>
+                </div>
+              )}
+              {profile.crf !== undefined && (
+                <div className="flex justify-between">
+                  <dt className="text-gray-500 dark:text-gray-400">CRF</dt>
+                  <dd className="text-gray-900 dark:text-gray-100">{profile.crf}</dd>
+                </div>
+              )}
+              {!!profile.audio && (
+                <div className="flex justify-between">
+                  <dt className="text-gray-500 dark:text-gray-400">Audio</dt>
+                  <dd className="text-gray-900 dark:text-gray-100">{String(profile.audio)}</dd>
+                </div>
+              )}
+              {!!profile.destination && (
+                <div className="flex justify-between gap-2">
+                  <dt className="text-gray-500 dark:text-gray-400 shrink-0">Destination</dt>
+                  <dd className="text-gray-900 dark:text-gray-100 text-xs break-all text-right">{String(profile.destination)}</dd>
+                </div>
+              )}
+            </dl>
+
+            {profile.file_path && (
+              <button
+                onClick={() => yaml.open(profile.file_path!, `Showing: ${profile.file_path!.split('/').pop()}`)}
+                disabled={yaml.isLoading}
+                className="text-xs text-blue-600 dark:text-blue-400 hover:underline disabled:opacity-50"
+              >
+                {yaml.isLoading ? 'Loading…' : 'See yaml…'}
+              </button>
+            )}
+          </div>
+        )}
+      </div>
+
+      {yaml.isOpen && yaml.content !== null && (
+        <YamlModal
+          title={yaml.title}
+          content={yaml.content}
+          onClose={yaml.close}
+        />
       )}
-    </div>
+    </>
   )
 }
 

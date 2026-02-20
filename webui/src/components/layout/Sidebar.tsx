@@ -35,7 +35,7 @@ const navigation: NavSection[] = [
     id: 'settings',
     title: 'Settings',
     items: [
-      { label: 'Skin & Status', to: '/settings/general' },
+      { label: 'General', to: '/settings/general' },
       { label: 'Storage', to: '/settings/storage' },
       { label: 'Encoding', to: '/settings/encoding' },
       { label: 'Daemon', to: '/settings/daemon' },
