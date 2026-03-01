@@ -76,9 +76,9 @@ class WatchfolderConfig(BaseModel):
         default=None,
         description="Temporary folder for source copy during encoding (default: system temp)"
     )
-    disable_temp_copy: bool = Field(
-        default=False,
-        description="If true, encode directly from source without copying to temp first"
+    enable_temp_copy: Optional[bool] = Field(
+        default=None,
+        description="Copy source to temp before encoding. None = use global storage.enable_temp_copy setting",
     )
     keep_processed_files: bool = Field(
         default=True,

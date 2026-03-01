@@ -4,6 +4,7 @@
 
 name: extract-base
 description: Base profile for fast stream copy extraction (no re-encoding)
+base_profile: true
 
 container: mkv
 

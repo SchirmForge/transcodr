@@ -42,7 +42,7 @@ class Job(BaseModel):
     output_mode: OutputMode = Field(default=OutputMode.REPLACE)
     delete_source: bool = Field(default=False)
     use_temp_folder: bool = Field(default=True)
-    copy_source_to_temp: bool = Field(default=True)
+    enable_temp_copy: bool = Field(default=False)
     auto_embed_subtitles: bool = Field(default=True)
     subtitles_languages: Optional[list[str]] = None  # None means "all"
     subtitle_fallback_mode: str = Field(default="carry")

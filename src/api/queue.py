@@ -23,6 +23,8 @@ from .models import (
 from ..jobs import Job, JobRunner, JobState, OutputMode
 from ..core.errors import ValidationError
 from ..profiles.store import get_profile_manager, clear_profile_cache
+from ..version import APP_VERSION, DB_COMPATIBLE_VERSIONS
+from ..notifications.service import NotificationService
 
 logger = logging.getLogger(__name__)
 
@@ -48,6 +50,8 @@ class JobQueue:
         root_media: Optional[Path] = None,
         min_free_space_gb: int = 10,
         on_extension_mismatch: str = "rename",
+        enable_temp_copy: bool = False,
+        notify_service: Optional[NotificationService] = None,
     ):
         """
         Initialize job queue.
@@ -61,11 +65,15 @@ class JobQueue:
             root_media: Base path for $root_media placeholder expansion
             min_free_space_gb: Minimum free space safety margin in GB
             on_extension_mismatch: Policy for extension mismatch in replace mode (rename/reject/keep)
+            enable_temp_copy: Global default for source temp-copy (overridable per-request)
+            notify_service: Notification service instance (None = notifications disabled)
         """
         self.max_concurrent = max_concurrent
         self.db_path = db_path or Path(":memory:")
         self._profile_name_separator = profile_name_separator
         self._root_media = root_media
+        self._enable_temp_copy = enable_temp_copy
+        self._notify_service: Optional[NotificationService] = notify_service
 
         self._running = False
         self._paused = False
@@ -73,6 +81,8 @@ class JobQueue:
         self._db_lock = threading.Lock()  # For thread-safe DB writes from worker threads
         self._executor = ThreadPoolExecutor(max_workers=max_concurrent)
         self._active_jobs: dict[str, asyncio.Task] = {}
+        # True when queue has no pending/running jobs (to detect idle transitions)
+        self._queue_was_empty: bool = True
 
         self._conn: Optional[sqlite3.Connection] = None
         self._profile_manager = get_profile_manager()
@@ -86,6 +96,7 @@ class JobQueue:
         # Folder processors for folder sources (continuous monitoring)
         self._folder_processors: dict[str, FolderProcessor] = {}
         self._folder_requests: dict[str, EncodingRequest] = {}  # folder_key -> original request
+        self._folder_batch_ids: dict[str, str] = {}  # folder_key -> batch_id
         self._folder_monitor_tasks: dict[str, asyncio.Task] = {}
         self._job_to_folder: dict[str, str] = {}  # job_id -> folder_key (for completion tracking)
 
@@ -202,6 +213,16 @@ class JobQueue:
         self._root_media = root_media
         logger.info(f"Root media path updated: {root_media}")
 
+    def set_enable_temp_copy(self, enable_temp_copy: bool) -> None:
+        """Update the global enable_temp_copy default (for config reload)."""
+        self._enable_temp_copy = enable_temp_copy
+        logger.info(f"enable_temp_copy updated: {enable_temp_copy}")
+
+    def set_notify_service(self, notify_service: Optional[NotificationService]) -> None:
+        """Update the notification service (for config reload)."""
+        self._notify_service = notify_service
+        logger.info("Notification service updated")
+
     def clear_profile_cache(self) -> None:
         """Clear the profile cache to force reload from disk on next use."""
         clear_profile_cache()
@@ -218,7 +239,30 @@ class JobQueue:
         )
         self._conn.row_factory = sqlite3.Row
 
-        # Create jobs table (consolidated schema — no migrations needed, no public release yet)
+        # DB metadata table — stores app_version for compatibility checking
+        self._conn.execute("""
+            CREATE TABLE IF NOT EXISTS db_meta (
+                key TEXT PRIMARY KEY,
+                value TEXT NOT NULL
+            )
+        """)
+
+        # DB version / compatibility check
+        cursor = self._conn.execute("SELECT value FROM db_meta WHERE key = 'app_version'")
+        stored_row = cursor.fetchone()
+        if stored_row is None:
+            # New or pre-0.4.3 DB — proceed to create/migrate, then stamp version
+            pass
+        elif stored_row["value"] not in DB_COMPATIBLE_VERSIONS:
+            stored_v = stored_row["value"]
+            raise RuntimeError(
+                f"DB was created with app version {stored_v!r}, which is incompatible with "
+                f"the current version {APP_VERSION!r}. "
+                "Reset the database (delete jobs.db) or wait for a migration in a future version."
+            )
+        # else: version matches — nothing to do
+
+        # Create jobs table
         self._conn.execute("""
             CREATE TABLE IF NOT EXISTS jobs (
                 id TEXT PRIMARY KEY,
@@ -229,6 +273,7 @@ class JobQueue:
                 profile_index INTEGER DEFAULT 0,
                 total_profiles INTEGER DEFAULT 1,
                 parent_job_id TEXT,
+                batch_id TEXT,
                 progress REAL DEFAULT 0.0,
                 fps REAL DEFAULT 0.0,
                 frames_processed INTEGER DEFAULT 0,
@@ -249,7 +294,7 @@ class JobQueue:
                 watchfolder_context TEXT,
                 source_id TEXT,
                 use_temp_folder BOOLEAN DEFAULT 1,
-                copy_source_to_temp BOOLEAN DEFAULT 1,
+                enable_temp_copy BOOLEAN DEFAULT 0,
                 auto_embed_subtitles BOOLEAN DEFAULT 1,
                 subtitles_languages TEXT DEFAULT '"all"',
                 subtitle_fallback_mode TEXT DEFAULT 'carry'
@@ -288,6 +333,28 @@ class JobQueue:
                 "ALTER TABLE jobs ADD COLUMN subtitle_fallback_mode TEXT DEFAULT 'carry'"
             )
 
+        # Migration: rename copy_source_to_temp -> enable_temp_copy (v0.4.2)
+        try:
+            self._conn.execute("SELECT enable_temp_copy FROM jobs LIMIT 1")
+        except sqlite3.OperationalError:
+            try:
+                logger.info("Migrating database: renaming copy_source_to_temp to enable_temp_copy")
+                self._conn.execute(
+                    "ALTER TABLE jobs RENAME COLUMN copy_source_to_temp TO enable_temp_copy"
+                )
+            except sqlite3.OperationalError:
+                logger.info("Migrating database: adding enable_temp_copy column")
+                self._conn.execute(
+                    "ALTER TABLE jobs ADD COLUMN enable_temp_copy BOOLEAN DEFAULT 0"
+                )
+
+        # Migration: add batch_id column (v0.4.3)
+        try:
+            self._conn.execute("SELECT batch_id FROM jobs LIMIT 1")
+        except sqlite3.OperationalError:
+            logger.info("Migrating database: adding batch_id column")
+            self._conn.execute("ALTER TABLE jobs ADD COLUMN batch_id TEXT")
+
         # Create index for efficient queries
         self._conn.execute("""
             CREATE INDEX IF NOT EXISTS idx_jobs_status ON jobs(status)
@@ -295,8 +362,17 @@ class JobQueue:
         self._conn.execute("""
             CREATE INDEX IF NOT EXISTS idx_jobs_priority ON jobs(priority DESC, created_at ASC)
         """)
+        self._conn.execute("""
+            CREATE INDEX IF NOT EXISTS idx_jobs_batch_id ON jobs(batch_id)
+        """)
 
-        logger.info(f"Database initialized: {self.db_path}")
+        # Stamp (or update) the app version in db_meta
+        self._conn.execute(
+            "INSERT OR REPLACE INTO db_meta (key, value) VALUES ('app_version', ?)",
+            (APP_VERSION,),
+        )
+
+        logger.info(f"Database initialized: {self.db_path} (app version: {APP_VERSION})")
 
     async def submit(self, request: EncodingRequest) -> list[str]:
         """
@@ -311,19 +387,45 @@ class JobQueue:
         Returns:
             List of created job IDs (initial batch for folders)
         """
+        # Resolve effective enable_temp_copy: per-request override → global default
+        effective_enable_temp_copy = (
+            request.enable_temp_copy
+            if request.enable_temp_copy is not None
+            else self._enable_temp_copy
+        )
+        # Guard: replace mode + multi-profile requires temp copy to avoid source corruption.
+        # Without a temp copy, the first profile to finish would replace the original source
+        # before the other profiles have finished reading it.
+        if (
+            not effective_enable_temp_copy
+            and request.output_mode == OutputMode.REPLACE
+            and len(request.profiles) > 1
+        ):
+            raise ValidationError(
+                "enable_temp_copy must be enabled when using replace mode with multiple profiles "
+                "(without a temp copy the first profile to complete would overwrite the source "
+                "before other profiles finish reading it)"
+            )
+        # Stamp resolved value back onto request so _submit_files uses it
+        request = request.model_copy(update={"enable_temp_copy": effective_enable_temp_copy})
+
         source_path = Path(request.source)
+        # One batch_id per submit() call — groups all resulting jobs for batch-complete detection
+        batch_id = str(uuid.uuid4())
 
         if source_path.is_file():
             # Single file - submit immediately
-            return await self._submit_files([source_path], request)
+            return await self._submit_files([source_path], request, batch_id=batch_id)
         elif source_path.is_dir():
             # Folder - use FolderProcessor for continuous monitoring
-            return await self._submit_folder(source_path, request)
+            return await self._submit_folder(source_path, request, batch_id=batch_id)
         else:
             logger.warning(f"Source path does not exist: {source_path}")
             return []
 
-    async def _submit_folder(self, folder_path: Path, request: EncodingRequest) -> list[str]:
+    async def _submit_folder(
+        self, folder_path: Path, request: EncodingRequest, batch_id: str
+    ) -> list[str]:
         """
         Submit folder with continuous monitoring using FolderProcessor.
 
@@ -333,6 +435,7 @@ class JobQueue:
         Args:
             folder_path: Path to folder
             request: Encoding request
+            batch_id: Submission batch ID shared by all jobs from this submit() call
 
         Returns:
             List of job IDs for initially ready files
@@ -346,9 +449,10 @@ class JobQueue:
         )
         folder_key = processor.register_folder(folder_path)
 
-        # Store processor and request for monitoring
+        # Store processor, request, and batch_id for monitoring
         self._folder_processors[folder_key] = processor
         self._folder_requests[folder_key] = request
+        self._folder_batch_ids[folder_key] = batch_id
 
         # Initial scan
         processor.scan_folder(folder_key)
@@ -356,7 +460,7 @@ class JobQueue:
         # Submit initially ready files
         job_ids = []
         for file_path in processor.get_ready_files(folder_key):
-            ids = await self._submit_files([file_path], request, folder_key=folder_key)
+            ids = await self._submit_files([file_path], request, folder_key=folder_key, batch_id=batch_id)
             job_ids.extend(ids)
             processor.mark_file_submitted(folder_key, file_path)
 
@@ -378,6 +482,7 @@ class JobQueue:
         """
         processor = self._folder_processors.get(folder_key)
         request = self._folder_requests.get(folder_key)
+        batch_id = self._folder_batch_ids.get(folder_key)
 
         if not processor or not request:
             return
@@ -391,7 +496,9 @@ class JobQueue:
 
                 # Submit newly ready files
                 for file_path in processor.get_ready_files(folder_key):
-                    await self._submit_files([file_path], request, folder_key=folder_key)
+                    await self._submit_files(
+                        [file_path], request, folder_key=folder_key, batch_id=batch_id
+                    )
                     processor.mark_file_submitted(folder_key, file_path)
 
             # Folder complete - get stats before cleanup
@@ -411,13 +518,15 @@ class JobQueue:
             # Cleanup
             self._folder_processors.pop(folder_key, None)
             self._folder_requests.pop(folder_key, None)
+            self._folder_batch_ids.pop(folder_key, None)
             self._folder_monitor_tasks.pop(folder_key, None)
 
     async def _submit_files(
         self,
         files: list[Path],
         request: EncodingRequest,
-        folder_key: Optional[str] = None
+        folder_key: Optional[str] = None,
+        batch_id: Optional[str] = None,
     ) -> list[str]:
         """
         Submit a list of files for encoding.
@@ -426,11 +535,14 @@ class JobQueue:
             files: List of file paths to encode
             request: Encoding request with profiles and settings
             folder_key: Optional folder key for tracking
+            batch_id: Optional submission batch ID for batch-completion detection
 
         Returns:
             List of created job IDs
         """
         job_ids = []
+        # Mark queue as non-empty when new jobs are submitted
+        self._queue_was_empty = False
 
         # Generate source_id for per-source concurrency tracking.
         # For media watchfolders we prefer a stable watchfolder bucket so limits
@@ -473,12 +585,12 @@ class JobQueue:
                     self._conn.execute("""
                         INSERT INTO jobs (
                             id, status, profile, source_path, output_path,
-                            profile_index, total_profiles, parent_job_id,
+                            profile_index, total_profiles, parent_job_id, batch_id,
                             created_at, priority, hardware_accel, backup, backup_dir,
                             source_size_bytes, output_mode, delete_source, watchfolder_context,
-                            source_id, use_temp_folder, copy_source_to_temp,
+                            source_id, use_temp_folder, enable_temp_copy,
                             auto_embed_subtitles, subtitles_languages, subtitle_fallback_mode
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """, (
                         job_id,
                         JobStatus.PENDING.value,
@@ -488,6 +600,7 @@ class JobQueue:
                         profile_index,
                         len(request.profiles),
                         parent_job_id,
+                        batch_id,
                         datetime.now().isoformat(),
                         request.priority,
                         request.hardware_accel,
@@ -499,7 +612,7 @@ class JobQueue:
                         watchfolder_context_json,
                         source_id,
                         request.use_temp_folder,
-                        request.copy_source_to_temp,
+                        request.enable_temp_copy,
                         request.auto_embed_subtitles,
                         json.dumps(request.subtitles_languages),
                         request.subtitle_fallback_mode,
@@ -655,7 +768,7 @@ class JobQueue:
                     """SELECT id, profile, source_path, output_path, hardware_accel,
                               profile_index, total_profiles, parent_job_id, output_mode,
                               delete_source, watchfolder_context, source_id, use_temp_folder,
-                              copy_source_to_temp, auto_embed_subtitles, subtitles_languages,
+                              enable_temp_copy, auto_embed_subtitles, subtitles_languages,
                               subtitle_fallback_mode
                        FROM jobs WHERE id = ?""",
                     (job_id,)
@@ -680,7 +793,7 @@ class JobQueue:
             output_mode = OutputMode(output_mode_str)
             delete_source = bool(row["delete_source"]) if row["delete_source"] is not None else False
             use_temp_folder = bool(row["use_temp_folder"]) if row["use_temp_folder"] is not None else True
-            copy_source_to_temp = bool(row["copy_source_to_temp"]) if row["copy_source_to_temp"] is not None else True
+            enable_temp_copy = bool(row["enable_temp_copy"]) if row["enable_temp_copy"] is not None else False
             auto_embed_subtitles = bool(row["auto_embed_subtitles"]) if row["auto_embed_subtitles"] is not None else True
             subtitle_fallback_mode = str(row["subtitle_fallback_mode"] or "carry").lower()
             if subtitle_fallback_mode not in {"carry", "skip", "fail"}:
@@ -709,7 +822,7 @@ class JobQueue:
                 output_mode=output_mode,
                 delete_source=delete_source,
                 use_temp_folder=use_temp_folder,
-                copy_source_to_temp=copy_source_to_temp,
+                enable_temp_copy=enable_temp_copy,
                 auto_embed_subtitles=auto_embed_subtitles,
                 subtitles_languages=subtitles_languages,
                 subtitle_fallback_mode=subtitle_fallback_mode,
@@ -855,7 +968,13 @@ class JobQueue:
         """Update job as completed (or warning if warnings present)."""
         status = JobStatus.WARNING if job.warning_message else JobStatus.COMPLETED
         self._clear_runtime_eta(job_id)
+        batch_id: Optional[str] = None
         async with self._lock:
+            # Fetch batch_id before updating (same lock)
+            cur = self._conn.execute("SELECT batch_id FROM jobs WHERE id = ?", (job_id,))
+            row = cur.fetchone()
+            if row:
+                batch_id = row["batch_id"]
             self._conn.execute("""
                 UPDATE jobs SET
                     status = ?,
@@ -883,10 +1002,30 @@ class JobQueue:
         # Notify folder processor if job belongs to a folder
         self._notify_folder_job_complete(job_id, success=True)
 
+        # Fire notifications asynchronously
+        if self._notify_service:
+            asyncio.create_task(self._post_job_done(
+                job_id, status, batch_id,
+                source=str(job.source_path),
+                profile=job.profile_name,
+                source_size_bytes=job.source_size_bytes,
+                output_size_bytes=job.output_size_bytes,
+                error_message=None,
+            ))
+
     async def _update_job_failed(self, job_id: str, error: str):
         """Update job as failed."""
         self._clear_runtime_eta(job_id)
+        batch_id: Optional[str] = None
         async with self._lock:
+            # Fetch batch_id and job details before updating
+            cur = self._conn.execute(
+                "SELECT batch_id, profile, source_path, source_size_bytes FROM jobs WHERE id = ?",
+                (job_id,)
+            )
+            row = cur.fetchone()
+            if row:
+                batch_id = row["batch_id"]
             self._conn.execute("""
                 UPDATE jobs SET
                     status = ?,
@@ -904,6 +1043,17 @@ class JobQueue:
         # Notify folder processor if job belongs to a folder
         self._notify_folder_job_complete(job_id, success=False)
 
+        # Fire notifications asynchronously
+        if self._notify_service and row:
+            asyncio.create_task(self._post_job_done(
+                job_id, JobStatus.FAILED, batch_id,
+                source=row["source_path"],
+                profile=row["profile"],
+                source_size_bytes=row["source_size_bytes"],
+                output_size_bytes=None,
+                error_message=error,
+            ))
+
     def _notify_folder_job_complete(self, job_id: str, success: bool):
         """Notify folder processor that a job has completed."""
         folder_key = self._job_to_folder.pop(job_id, None)
@@ -911,6 +1061,76 @@ class JobQueue:
             processor = self._folder_processors.get(folder_key)
             if processor:
                 processor.mark_job_completed(folder_key, success=success)
+
+    async def _post_job_done(
+        self,
+        job_id: str,
+        status: JobStatus,
+        batch_id: Optional[str],
+        source: str,
+        profile: str,
+        source_size_bytes: Optional[int],
+        output_size_bytes: Optional[int],
+        error_message: Optional[str],
+    ) -> None:
+        """Dispatch notifications after a job reaches a terminal state."""
+        if not self._notify_service:
+            return
+
+        # Per-job notification
+        await self._notify_service.notify_job_complete(
+            job_id=job_id,
+            profile=profile,
+            source=source,
+            status=status.value,
+            source_size_bytes=source_size_bytes,
+            output_size_bytes=output_size_bytes,
+            error_message=error_message,
+        )
+
+        # Batch completion check
+        if batch_id:
+            async with self._lock:
+                cur = self._conn.execute(
+                    "SELECT COUNT(*) as remaining FROM jobs "
+                    "WHERE batch_id = ? AND status IN (?, ?, ?)",
+                    (batch_id, JobStatus.PENDING.value, JobStatus.QUEUED.value, JobStatus.RUNNING.value),
+                )
+                remaining = cur.fetchone()["remaining"]
+                if remaining == 0:
+                    cur2 = self._conn.execute(
+                        "SELECT COUNT(*) as total, "
+                        "SUM(CASE WHEN status IN (?, ?) THEN 1 ELSE 0 END) as completed, "
+                        "SUM(CASE WHEN status = ? THEN 1 ELSE 0 END) as failed "
+                        "FROM jobs WHERE batch_id = ?",
+                        (
+                            JobStatus.COMPLETED.value, JobStatus.WARNING.value,
+                            JobStatus.FAILED.value,
+                            batch_id,
+                        ),
+                    )
+                    stats = cur2.fetchone()
+            if remaining == 0:
+                await self._notify_service.notify_batch_complete(
+                    batch_id=batch_id,
+                    total=stats["total"] or 0,
+                    completed=stats["completed"] or 0,
+                    failed=stats["failed"] or 0,
+                )
+
+        # Queue empty check (transition False → True)
+        async with self._lock:
+            cur = self._conn.execute(
+                "SELECT COUNT(*) as count FROM jobs WHERE status IN (?, ?, ?)",
+                (JobStatus.PENDING.value, JobStatus.QUEUED.value, JobStatus.RUNNING.value),
+            )
+            active_count = cur.fetchone()["count"]
+        is_empty = active_count == 0
+        if is_empty and not self._queue_was_empty:
+            self._queue_was_empty = True
+            await self._notify_service.notify_queue_empty()
+        elif not is_empty:
+            self._queue_was_empty = False
 
     async def get_job(self, job_id: str) -> Optional[JobInfo]:
         """Get job by ID."""
@@ -1150,7 +1370,7 @@ class JobQueue:
         if use_temp_folder and row["watchfolder_context"]:
             try:
                 ctx_data = json.loads(row["watchfolder_context"])
-                use_temp_folder = not ctx_data.get("disable_temp_copy", False)
+                use_temp_folder = ctx_data.get("enable_temp_copy", False)
             except Exception:
                 pass
 

@@ -3,11 +3,13 @@ import { useProfiles } from '../../hooks/useProfiles'
 import { useYamlModal } from '../../hooks/useYamlModal'
 import type { ProfileInfo } from '../../api/types'
 import { YamlModal } from '../../components/ui/YamlModal'
+import { ImportBuiltinsModal } from '../../components/ImportBuiltinsModal'
 
 function ProfileCard({ profile }: { profile: ProfileInfo }) {
   const [expanded, setExpanded] = useState(false)
   const yaml = useYamlModal()
   const isInvalid = !!profile.error
+  const isBase = !!profile.base_profile
 
   return (
     <>
@@ -30,6 +32,11 @@ function ProfileCard({ profile }: { profile: ProfileInfo }) {
             {isInvalid && (
               <span className="px-2 py-1 text-xs font-medium rounded bg-red-100 dark:bg-red-900/50 text-red-800 dark:text-red-300">
                 Invalid
+              </span>
+            )}
+            {isBase && (
+              <span className="px-2 py-1 text-xs font-medium rounded bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400">
+                base
               </span>
             )}
             <span
@@ -127,6 +134,7 @@ function ProfileCard({ profile }: { profile: ProfileInfo }) {
 
 export function ProfilesPage() {
   const { data: profiles, isLoading, isError, isFetching, refetch } = useProfiles()
+  const [showImportModal, setShowImportModal] = useState(false)
 
   if (isLoading) {
     return (
@@ -184,7 +192,15 @@ export function ProfilesPage() {
 
           {builtinProfiles.length > 0 && (
             <div>
-              <h2 className="text-lg font-semibold text-gray-800 dark:text-gray-200 mb-3">Built-in Profiles</h2>
+              <div className="flex items-center justify-between mb-3">
+                <h2 className="text-lg font-semibold text-gray-800 dark:text-gray-200">Built-in Profiles</h2>
+                <button
+                  onClick={() => setShowImportModal(true)}
+                  className="px-3 py-1.5 text-sm font-medium bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+                >
+                  Import built-in profiles
+                </button>
+              </div>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                 {builtinProfiles.map((profile) => (
                   <ProfileCard key={profile.name} profile={profile} />
@@ -197,6 +213,10 @@ export function ProfilesPage() {
         <div className="p-4 bg-white dark:bg-gray-800 rounded-lg shadow">
           <p className="text-gray-500 dark:text-gray-400 text-sm">No profiles loaded</p>
         </div>
+      )}
+
+      {showImportModal && (
+        <ImportBuiltinsModal onClose={() => setShowImportModal(false)} />
       )}
     </div>
   )

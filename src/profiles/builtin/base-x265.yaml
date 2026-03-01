@@ -3,6 +3,7 @@
 
 name: base-x265
 description: Base x265 encoding profile with VAAPI hardware acceleration
+base_profile: true
 
 container: mkv
 

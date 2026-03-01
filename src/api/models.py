@@ -40,7 +40,7 @@ class WatchfolderContext(BaseModel):
     Context for watchfolder job file handling.
 
     When present, JobRunner handles:
-    - Optional temp copy (if not disable_temp_copy)
+    - Optional temp copy (if enable_temp_copy)
     - Final rename to .processed/.failed (last profile) or delete
 
     Note: No .processing rename during execution - all profiles read
@@ -57,9 +57,9 @@ class WatchfolderContext(BaseModel):
         default=True,
         description="Keep .processed files after encoding, or delete source"
     )
-    disable_temp_copy: bool = Field(
+    enable_temp_copy: bool = Field(
         default=False,
-        description="Encode directly from source without creating temp copy"
+        description="Copy source to temp before encoding (resolved from per-watchfolder or global config)",
     )
     temp_folder: Optional[str] = Field(
         default=None,
@@ -214,9 +214,9 @@ class EncodingRequest(BaseModel):
         default=True,
         description="Encode to temp folder first, then move to output (safer but needs temp space)"
     )
-    copy_source_to_temp: bool = Field(
-        default=True,
-        description="Copy source file to temp before encoding (for multi-profile jobs on network storage)"
+    enable_temp_copy: Optional[bool] = Field(
+        default=None,
+        description="Copy source to temp before encoding. None = use global storage.enable_temp_copy setting",
     )
 
     # Concurrency control

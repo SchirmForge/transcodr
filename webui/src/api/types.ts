@@ -145,10 +145,33 @@ export interface ProfileInfo {
   preset?: string
   crf?: number
   source: 'builtin' | 'user'
+  base_profile?: boolean
   destination?: string | null
   file_path?: string  // absolute path to the source YAML file
   error?: string  // set when profile has an invalid path (missing destination folder, etc.)
   [key: string]: unknown
+}
+
+export interface BuiltinProfileEntry {
+  name: string
+  description?: string
+  tags: string[]
+  already_installed: boolean
+}
+
+export interface BuiltinsResponse {
+  builtins: BuiltinProfileEntry[]
+  total: number
+}
+
+export interface ImportBuiltinsRequest {
+  names: string[]
+}
+
+export interface ImportBuiltinsResponse {
+  imported: string[]
+  skipped: string[]
+  message: string
 }
 
 // File browser types

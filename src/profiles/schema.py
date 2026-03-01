@@ -88,6 +88,10 @@ class Profile(BaseModel):
 
     # Inheritance
     extends: Optional[str] = Field(default=None, description="Parent profile to inherit from")
+    base_profile: bool = Field(
+        default=False,
+        description="If true, this is a base/parent template not meant to be used directly",
+    )
 
     # Container format
     container: Literal["mkv", "mp4", "webm", "avi"] = Field(

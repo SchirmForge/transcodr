@@ -187,7 +187,7 @@ class JobRunner:
                 )
             elif is_multi_profile and parent_job_id:
                 # Direct API submission with multi-profile
-                if job.copy_source_to_temp:
+                if job.enable_temp_copy:
                     temp_source_path = self._get_or_create_temp_source(
                         parent_job_id,
                         job.source_path,
@@ -908,7 +908,7 @@ class JobRunner:
         Setup source for watchfolder job.
 
         All jobs read from the original file (no .processing rename during execution).
-        Temp copy is created once by first profile if disable_temp_copy=False.
+        Temp copy is created once by first profile if enable_temp_copy=True.
         Final rename (.processed/.failed) or delete happens in _do_watchfolder_cleanup().
 
         Uses inotify for instant detection of copy completion on local filesystems,
@@ -931,7 +931,7 @@ class JobRunner:
         if is_first_profile:
             # First profile: create temp copy if needed
             temp_source = None
-            if not ctx.disable_temp_copy:
+            if ctx.enable_temp_copy:
                 temp_folder = Path(ctx.temp_folder) if ctx.temp_folder else self.temp_dir
                 temp_folder.mkdir(parents=True, exist_ok=True)
                 temp_source = temp_folder / source_path.name
@@ -954,7 +954,7 @@ class JobRunner:
                     if state_key in JobRunner._watchfolder_state:
                         JobRunner._watchfolder_state[state_key]["copy_complete"] = True
             else:
-                logger.info(f"Encoding directly from source (disable_temp_copy): {source_path}")
+                logger.info(f"Encoding directly from source (enable_temp_copy=False): {source_path}")
                 # Store state for subsequent profiles
                 with JobRunner._watchfolder_lock:
                     JobRunner._watchfolder_state[state_key] = {

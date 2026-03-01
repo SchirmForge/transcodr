@@ -2,6 +2,7 @@
 
 import logging
 import os
+import shutil
 from pathlib import Path
 from typing import Optional
 import yaml
@@ -274,6 +275,7 @@ class ProfileManager:
                 "audio": "copy" if profile.audio.copy_streams else profile.audio.codec,
                 "tags": profile.tags,
                 "destination": profile.destination,
+                "base_profile": profile.base_profile,
                 "file_path": str(profile_file) if profile_file else None,
             }
             # Validate destination folder if set (skip $root_media — resolved at watchfolder level)
@@ -286,6 +288,85 @@ class ProfileManager:
             return info
         except Exception as e:
             return {"name": name, "error": str(e)}
+
+    def list_installable_builtins(self) -> list[dict]:
+        """
+        List builtin profiles that can be installed (excludes base_profile=True).
+
+        Returns:
+            List of dicts with name, description, tags for each installable builtin.
+        """
+        result = []
+        if not self.builtin_profile_dir.exists():
+            return result
+        for yaml_file in sorted(self.builtin_profile_dir.glob("*.yaml")):
+            try:
+                with open(yaml_file) as f:
+                    data = yaml.safe_load(f) or {}
+                if data.get("base_profile", False):
+                    continue  # Skip base/parent templates
+                result.append({
+                    "name": data.get("name", yaml_file.stem),
+                    "description": data.get("description"),
+                    "tags": data.get("tags", []),
+                    "already_installed": (self.user_profile_dir / yaml_file.name).exists(),
+                })
+            except Exception as e:
+                logger.warning(f"Could not read builtin profile {yaml_file}: {e}")
+        return result
+
+    def auto_install_builtins(self, names: list[str] | None = None) -> list[str]:
+        """
+        Copy installable builtin profiles to user dir if the user dir is empty.
+
+        Only runs when no user profiles exist yet (first-run behaviour).
+        Uses self.user_profile_dir — already resolved from config/env, not hardcoded.
+
+        Args:
+            names: Specific profile names to install. None = install default x265 set.
+
+        Returns:
+            List of installed profile names (empty if user already had profiles).
+        """
+        self.user_profile_dir.mkdir(parents=True, exist_ok=True)
+        if any(self.user_profile_dir.glob("*.yaml")):
+            return []  # User already has profiles — don't touch them
+        return self.import_builtin_profiles(
+            names or ["x265-balanced", "x265-fast", "x265-quality"],
+            overwrite=False,
+        )
+
+    def import_builtin_profiles(
+        self, names: list[str], overwrite: bool = False
+    ) -> list[str]:
+        """
+        Copy selected builtin profiles to the user dir.
+
+        Used by the import API endpoint. Does NOT require user dir to be empty.
+
+        Args:
+            names: Profile names to import.
+            overwrite: If True, overwrite existing user profiles with the same name.
+
+        Returns:
+            List of actually imported profile names (skips non-existent or already-present
+            profiles when overwrite=False).
+        """
+        self.user_profile_dir.mkdir(parents=True, exist_ok=True)
+        imported = []
+        for name in names:
+            src = self.builtin_profile_dir / f"{name}.yaml"
+            if not src.exists():
+                logger.warning(f"Builtin profile not found: {name}")
+                continue
+            dest = self.user_profile_dir / f"{name}.yaml"
+            if dest.exists() and not overwrite:
+                logger.debug(f"Skipping already-imported profile: {name}")
+                continue
+            shutil.copy2(src, dest)
+            imported.append(name)
+            logger.info(f"Imported builtin profile: {name} -> {dest}")
+        return imported
 
     def clear_cache(self):
         """Clear profile cache."""

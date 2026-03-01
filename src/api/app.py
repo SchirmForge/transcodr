@@ -38,6 +38,8 @@ from ..watcher import WatchfolderService
 from ..config.manager import ConfigManager, expand_path
 from ..core.hardware import HardwareCapabilities
 from ..profiles.store import get_profile_manager
+from ..version import APP_VERSION
+from ..notifications.service import NotificationService
 
 logger = logging.getLogger(__name__)
 
@@ -47,7 +49,7 @@ _job_queue: Optional[JobQueue] = None
 _watchfolder_service: Optional[WatchfolderService] = None
 _config = None
 
-VERSION = "0.3.6"
+VERSION = APP_VERSION
 
 def _build_disk_usage(path: str) -> Optional[DiskUsageInfo]:
     """Build disk usage info for a path."""
@@ -186,6 +188,12 @@ async def lifespan(app: FastAPI):
     # Ensure config directory structure exists
     ConfigManager.ensure_config_structure()
 
+    # Auto-install builtin profiles on first run (when user profiles dir is empty)
+    profile_manager = get_profile_manager()
+    installed = profile_manager.auto_install_builtins()
+    if installed:
+        logger.info(f"Auto-installed {len(installed)} builtin profile(s): {', '.join(installed)}")
+
     # Load configuration
     _config = ConfigManager.load_config()
     logger.info(f"Configuration loaded from: {ConfigManager.get_default_config_path()}")
@@ -199,6 +207,9 @@ async def lifespan(app: FastAPI):
             logger.error(f"Config error: {error}")
         raise RuntimeError(f"Configuration validation failed: {'; '.join(errors)}")
 
+    # Initialize notification service
+    notify_service = NotificationService(_config.notifications)
+
     # Initialize job queue
     _job_queue = JobQueue(
         max_concurrent=_config.daemon.max_concurrent_jobs,
@@ -209,6 +220,8 @@ async def lifespan(app: FastAPI):
         root_media=_config.storage.root_media,
         min_free_space_gb=_config.storage.min_free_space_gb,
         on_extension_mismatch=_config.storage.on_extension_mismatch.value,
+        enable_temp_copy=_config.storage.enable_temp_copy,
+        notify_service=notify_service,
     )
     await _job_queue.start()
     logger.info(f"Job queue started (max concurrent: {_config.daemon.max_concurrent_jobs}, temp: {_config.storage.temp_dir})")
@@ -727,6 +740,8 @@ async def reload_config():
         if _job_queue:
             _job_queue.set_max_concurrent(_config.daemon.max_concurrent_jobs)
             _job_queue.set_root_media(_config.storage.root_media)
+            _job_queue.set_enable_temp_copy(_config.storage.enable_temp_copy)
+            _job_queue.set_notify_service(NotificationService(_config.notifications))
             _job_queue.clear_profile_cache()
             logger.info("Profile cache cleared")
 
@@ -903,6 +918,48 @@ async def delete_profile(
     profile_file.unlink()
     pm.clear_cache()
     return {"success": True, "message": f"Profile deleted: {name}"}
+
+
+@api_router.get("/profiles/builtins/list", tags=["Profiles"])
+async def list_builtin_profiles():
+    """
+    List installable builtin profiles.
+
+    Returns all builtin profiles that are not base/parent templates
+    (i.e. base_profile=False), along with whether each is already installed
+    in the user profiles directory.
+    """
+    pm = get_profile_manager()
+    builtins = pm.list_installable_builtins()
+    return {"builtins": builtins, "total": len(builtins)}
+
+
+@api_router.post("/profiles/import-builtins", tags=["Profiles"])
+async def import_builtin_profiles(
+    body: dict,
+    overwrite: bool = Query(False, description="Overwrite existing user profiles with same name"),
+):
+    """
+    Import selected builtin profiles to the user profiles directory.
+
+    Body: { "names": ["x265-balanced", "x265-fast"] }
+    """
+    names = body.get("names", [])
+    if not names or not isinstance(names, list):
+        raise HTTPException(status_code=400, detail="'names' must be a non-empty list of profile names")
+
+    pm = get_profile_manager()
+    imported = pm.import_builtin_profiles(names, overwrite=overwrite)
+    skipped = [n for n in names if n not in imported]
+
+    if imported:
+        pm.clear_cache()
+
+    return {
+        "imported": imported,
+        "skipped": skipped,
+        "message": f"Imported {len(imported)} profile(s)" + (f", skipped {len(skipped)} (already exist)" if skipped else ""),
+    }
 
 
 # =============================================================================

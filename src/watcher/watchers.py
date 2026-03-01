@@ -179,16 +179,23 @@ class MediaFileWatcher:
     Source files are only renamed/deleted AFTER all jobs complete successfully.
     """
 
-    def __init__(self, config, job_queue: "JobQueue"):
+    def __init__(self, config, job_queue: "JobQueue", global_enable_temp_copy: bool = False):
         """
         Initialize media file watcher.
 
         Args:
             config: WatchfolderConfig with encoding settings
             job_queue: Job queue to submit jobs to
+            global_enable_temp_copy: Global enable_temp_copy default from main config
         """
         self.config = config
         self.job_queue = job_queue
+        # Resolve effective enable_temp_copy: per-watchfolder override → global default
+        self._effective_enable_temp_copy = (
+            config.enable_temp_copy
+            if config.enable_temp_copy is not None
+            else global_enable_temp_copy
+        )
         self.watch_path = config.watchfolder_location
 
         self._running = False
@@ -516,7 +523,7 @@ class MediaFileWatcher:
                 file_hash=file_hash,
                 concurrency_bucket=watchfolder_bucket,
                 keep_processed_files=self.config.keep_processed_files,
-                disable_temp_copy=self.config.disable_temp_copy,
+                enable_temp_copy=self._effective_enable_temp_copy,
                 temp_folder=str(self.config.temp_folder) if self.config.temp_folder else None,
             ),
         )

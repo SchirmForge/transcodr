@@ -44,9 +44,10 @@ class WatchfolderService:
         from ..config.manager import ConfigManager
         from ..profiles.store import get_profile_manager
 
-        # Load main config to get root_media setting
+        # Load main config to get root_media and enable_temp_copy settings
         main_config = ConfigManager.load_config()
         self._root_media = main_config.storage.root_media
+        self._global_enable_temp_copy = main_config.storage.enable_temp_copy
 
         configs_with_paths = WatchfolderConfigManager.load_configs_with_paths()
         logger.info(f"Loaded {len(configs_with_paths)} watchfolder configuration(s)")
@@ -78,7 +79,7 @@ class WatchfolderService:
             if config.watchfolder_type == WatchfolderType.COMMAND:
                 await self._start_command_watcher(config)
             elif config.watchfolder_type == WatchfolderType.MEDIA:
-                await self._start_media_watcher(config)
+                await self._start_media_watcher(config, self._global_enable_temp_copy)
 
     def _expand_profile_destination(self, dest_str: str) -> Path:
         """Expand $root_media, ~, $HOME in profile destination."""
@@ -185,7 +186,7 @@ class WatchfolderService:
         self._command_watchers[location_str] = watcher
         logger.info(f"Started command watcher for: {location}")
 
-    async def _start_media_watcher(self, config):
+    async def _start_media_watcher(self, config, global_enable_temp_copy: bool = False):
         """Start a media file watcher for the given config."""
         # Note: Validation is done in _validate_watchfolder() before this is called
         location = config.watchfolder_location
@@ -195,7 +196,11 @@ class WatchfolderService:
             logger.warning(f"Media watcher already exists for: {location}")
             return
 
-        watcher = MediaFileWatcher(config=config, job_queue=self.job_queue)
+        watcher = MediaFileWatcher(
+            config=config,
+            job_queue=self.job_queue,
+            global_enable_temp_copy=global_enable_temp_copy,
+        )
         await watcher.start()
         self._media_watchers[location_str] = watcher
         dest_info = "profile destinations" if config.use_profile_destination else config.destination

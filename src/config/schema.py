@@ -89,6 +89,10 @@ class StorageConfig(BaseModel):
         default=ExtensionMismatchPolicy.RENAME,
         description="What to do when source extension differs from profile container: rename (default), reject, or keep",
     )
+    enable_temp_copy: bool = Field(
+        default=False,
+        description="Copy source file to temp before encoding (required for multi-profile replace-mode jobs)",
+    )
 
 
 class LoggingConfig(BaseModel):
@@ -137,6 +141,48 @@ class HotFolderConfig(BaseModel):
     recursive: bool = Field(default=True, description="Monitor subdirectories")
 
 
+class DesktopNotificationConfig(BaseModel):
+    """Desktop notification settings (notify-send / libnotify)."""
+
+    enabled: bool = Field(default=False, description="Send desktop notifications via notify-send")
+
+
+class EmailNotificationConfig(BaseModel):
+    """Email notification settings (SMTP)."""
+
+    enabled: bool = Field(default=False, description="Send email notifications")
+    smtp_server: str = Field(default="smtp.gmail.com", description="SMTP server hostname")
+    smtp_port: int = Field(default=587, description="SMTP server port", ge=1, le=65535)
+    use_tls: bool = Field(default=True, description="Use STARTTLS")
+    smtp_user: str = Field(default="", description="SMTP username")
+    smtp_password: str = Field(default="", description="SMTP password (or use TRANSCODR_SMTP_PASSWORD env var)")
+    from_address: str = Field(default="transcodr@example.com", description="Sender address")
+    recipients: list[str] = Field(default_factory=list, description="Recipient email addresses")
+
+
+class AppriseNotificationConfig(BaseModel):
+    """Apprise notification settings (ntfy, Gotify, Pushover, and 80+ services)."""
+
+    enabled: bool = Field(default=False, description="Send notifications via Apprise")
+    urls: list[str] = Field(
+        default_factory=list,
+        description="Apprise notification URLs (e.g. ntfy://ntfy.sh/topic, pover://UserKey@AppToken)",
+    )
+
+
+class NotificationsConfig(BaseModel):
+    """Notification settings."""
+
+    enabled: bool = Field(default=False, description="Enable notifications globally")
+    on_job_complete: bool = Field(default=False, description="Notify on every individual job completion")
+    on_batch_complete: bool = Field(default=True, description="Notify when all jobs from one submission finish")
+    on_queue_empty: bool = Field(default=True, description="Notify when the queue becomes idle")
+    on_error: bool = Field(default=True, description="Notify on critical errors")
+    desktop: DesktopNotificationConfig = Field(default_factory=DesktopNotificationConfig)
+    email: EmailNotificationConfig = Field(default_factory=EmailNotificationConfig)
+    apprise: AppriseNotificationConfig = Field(default_factory=AppriseNotificationConfig)
+
+
 class Config(BaseModel):
     """Main application configuration."""
 
@@ -145,6 +191,7 @@ class Config(BaseModel):
     storage: StorageConfig = Field(default_factory=StorageConfig)
     logging: LoggingConfig = Field(default_factory=LoggingConfig)
     validation: ValidationConfig = Field(default_factory=ValidationConfig)
+    notifications: NotificationsConfig = Field(default_factory=NotificationsConfig)
     hot_folders: list[HotFolderConfig] = Field(
         default_factory=list, description="Hot folder configurations"
     )
