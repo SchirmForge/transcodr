@@ -253,6 +253,7 @@ export interface TranscodrConfig {
     host: string
     port: number
     max_concurrent_jobs: number
+    pid_file: string | null
   }
   storage: {
     temp_dir: string
@@ -262,6 +263,7 @@ export interface TranscodrConfig {
     root_media: string
     profile_name_separator: string
     on_extension_mismatch: string
+    enable_temp_copy: boolean
   }
   logging: {
     level: string
@@ -271,6 +273,30 @@ export interface TranscodrConfig {
   }
   validation: {
     duration_tolerance: number
+  }
+  notifications: {
+    enabled: boolean
+    on_job_complete: boolean
+    on_batch_complete: boolean
+    on_queue_empty: boolean
+    on_error: boolean
+    desktop: {
+      enabled: boolean
+    }
+    email: {
+      enabled: boolean
+      smtp_server: string
+      smtp_port: number
+      use_tls: boolean
+      smtp_user: string
+      smtp_password: string
+      from_address: string
+      recipients: string[]
+    }
+    apprise: {
+      enabled: boolean
+      urls: string[]
+    }
   }
 }
 

@@ -264,6 +264,15 @@ app.add_middleware(
 api_router = APIRouter()
 
 
+def _merge_nested(base: dict, update: dict) -> None:
+    """Recursively merge update dict into base dict in-place."""
+    for key, value in update.items():
+        if isinstance(value, dict) and isinstance(base.get(key), dict):
+            _merge_nested(base[key], value)
+        else:
+            base[key] = value
+
+
 # =============================================================================
 # Status Endpoints
 # =============================================================================
@@ -615,11 +624,6 @@ async def get_config():
             "binary_path": _config.ffmpeg.binary_path,
             "hardware_accel": _config.ffmpeg.hardware_accel,
         },
-        "daemon": {
-            "host": _config.daemon.host,
-            "port": _config.daemon.port,
-            "max_concurrent_jobs": _config.daemon.max_concurrent_jobs,
-        },
         "storage": {
             "temp_dir": str(_config.storage.temp_dir),
             "backup_originals": _config.storage.backup_originals,
@@ -628,6 +632,13 @@ async def get_config():
             "root_media": str(_config.storage.root_media),
             "profile_name_separator": _config.storage.profile_name_separator,
             "on_extension_mismatch": _config.storage.on_extension_mismatch.value,
+            "enable_temp_copy": _config.storage.enable_temp_copy,
+        },
+        "daemon": {
+            "host": _config.daemon.host,
+            "port": _config.daemon.port,
+            "max_concurrent_jobs": _config.daemon.max_concurrent_jobs,
+            "pid_file": str(_config.daemon.pid_file) if _config.daemon.pid_file else None,
         },
         "logging": {
             "level": _config.logging.level,
@@ -637,6 +648,30 @@ async def get_config():
         },
         "validation": {
             "duration_tolerance": _config.validation.duration_tolerance,
+        },
+        "notifications": {
+            "enabled": _config.notifications.enabled,
+            "on_job_complete": _config.notifications.on_job_complete,
+            "on_batch_complete": _config.notifications.on_batch_complete,
+            "on_queue_empty": _config.notifications.on_queue_empty,
+            "on_error": _config.notifications.on_error,
+            "desktop": {
+                "enabled": _config.notifications.desktop.enabled,
+            },
+            "email": {
+                "enabled": _config.notifications.email.enabled,
+                "smtp_server": _config.notifications.email.smtp_server,
+                "smtp_port": _config.notifications.email.smtp_port,
+                "use_tls": _config.notifications.email.use_tls,
+                "smtp_user": _config.notifications.email.smtp_user,
+                "smtp_password": _config.notifications.email.smtp_password,
+                "from_address": _config.notifications.email.from_address,
+                "recipients": _config.notifications.email.recipients,
+            },
+            "apprise": {
+                "enabled": _config.notifications.apprise.enabled,
+                "urls": _config.notifications.apprise.urls,
+            },
         },
     }
 
@@ -651,8 +686,8 @@ async def update_config(update: ConfigUpdateRequest):
 
     config_path = ConfigManager.get_default_config_path()
 
-    # Build merged config dict from current config
-    current = _config.model_dump(mode="python")
+    # Build merged config dict from current config (JSON mode: Enum/Path → str)
+    current = _config.model_dump(mode="json")
 
     # Merge updates into current config
     if update.ffmpeg:
@@ -665,6 +700,8 @@ async def update_config(update: ConfigUpdateRequest):
         current.setdefault("logging", {}).update(update.logging)
     if update.validation:
         current.setdefault("validation", {}).update(update.validation)
+    if update.notifications:
+        _merge_nested(current.setdefault("notifications", {}), update.notifications)
 
     # Validate by constructing Config (raises on invalid values)
     try:
@@ -696,6 +733,8 @@ async def update_config(update: ConfigUpdateRequest):
     if _job_queue:
         _job_queue.set_max_concurrent(_config.daemon.max_concurrent_jobs)
         _job_queue.set_root_media(_config.storage.root_media)
+        _job_queue.set_enable_temp_copy(_config.storage.enable_temp_copy)
+        _job_queue.set_notify_service(NotificationService(_config.notifications))
         _job_queue.clear_profile_cache()
 
     logger.info("Configuration updated and saved via API")

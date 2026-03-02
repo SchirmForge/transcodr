@@ -157,7 +157,7 @@ class ConfigManager:
 
         Args:
             config: Config object to save
-            config_path: Path to save to (default: ~/.config/videotranscode/config.yaml)
+            config_path: Path to save to (default: ~/.config/transcodr/config.yaml)
         """
         if config_path is None:
             config_path = ConfigManager.get_default_config_path()
@@ -165,20 +165,9 @@ class ConfigManager:
         # Create config directory if it doesn't exist
         config_path.parent.mkdir(parents=True, exist_ok=True)
 
-        # Convert to dict and save as YAML
-        config_dict = config.model_dump(mode="python")
-
-        # Convert Path objects to strings for YAML serialization
-        def path_to_str(obj):
-            if isinstance(obj, dict):
-                return {k: path_to_str(v) for k, v in obj.items()}
-            elif isinstance(obj, list):
-                return [path_to_str(item) for item in obj]
-            elif isinstance(obj, Path):
-                return str(obj)
-            return obj
-
-        config_dict = path_to_str(config_dict)
+        # Convert to dict using JSON mode so Path and Enum values become plain strings,
+        # preventing yaml.dump from emitting Python-specific object tags.
+        config_dict = config.model_dump(mode="json")
 
         with open(config_path, "w") as f:
             yaml.dump(
@@ -197,7 +186,7 @@ class ConfigManager:
         Create a default configuration file with comments.
 
         Args:
-            config_path: Path to create config file (default: ~/.config/videotranscode/config.yaml)
+            config_path: Path to create config file (default: ~/.config/transcodr/config.yaml)
 
         Returns:
             Path to created config file

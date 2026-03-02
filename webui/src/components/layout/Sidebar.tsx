@@ -40,6 +40,7 @@ const navigation: NavSection[] = [
       { label: 'Encoding', to: '/settings/encoding' },
       { label: 'Daemon', to: '/settings/daemon' },
       { label: 'Logging', to: '/settings/logging' },
+      { label: 'Notifications', to: '/settings/notifications' },
     ],
   },
   {
@@ -158,7 +159,7 @@ export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void 
 
               <div
                 className={`overflow-hidden transition-all duration-200 ${
-                  isExpanded ? 'max-h-60 opacity-100' : 'max-h-0 opacity-0'
+                  isExpanded ? 'max-h-80 opacity-100' : 'max-h-0 opacity-0'
                 }`}
               >
                 <ul className="mt-1 ml-3 space-y-1 border-l border-graphite-400 dark:border-graphite-800 pl-3">

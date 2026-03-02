@@ -13,6 +13,7 @@ export function StoragePage() {
     min_free_space_gb: 10,
     on_extension_mismatch: 'rename',
     profile_name_separator: '_',
+    enable_temp_copy: false,
   })
   const [dirty, setDirty] = useState(false)
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
@@ -27,6 +28,7 @@ export function StoragePage() {
         min_free_space_gb: config.storage.min_free_space_gb,
         on_extension_mismatch: config.storage.on_extension_mismatch,
         profile_name_separator: config.storage.profile_name_separator,
+        enable_temp_copy: config.storage.enable_temp_copy,
       })
       setDirty(false)
     }
@@ -64,6 +66,7 @@ export function StoragePage() {
         min_free_space_gb: config.storage.min_free_space_gb,
         on_extension_mismatch: config.storage.on_extension_mismatch,
         profile_name_separator: config.storage.profile_name_separator,
+        enable_temp_copy: config.storage.enable_temp_copy,
       })
       setDirty(false)
       setMessage(null)
@@ -208,6 +211,22 @@ export function StoragePage() {
                 maxLength={5}
               />
               <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">Separator between filename and profile name for append_profile_name.</p>
+            </div>
+            <div className="flex items-center justify-between">
+              <div>
+                <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Enable Temp Copy</label>
+                <p className="text-xs text-gray-500 dark:text-gray-400">Copy source to temp directory before encoding. Required for replace-mode multi-profile jobs.</p>
+              </div>
+              <button
+                onClick={() => handleChange('enable_temp_copy', !form.enable_temp_copy)}
+                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                  form.enable_temp_copy ? 'bg-blue-600' : 'bg-gray-300 dark:bg-gray-600'
+                }`}
+              >
+                <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                  form.enable_temp_copy ? 'translate-x-6' : 'translate-x-1'
+                }`} />
+              </button>
             </div>
           </div>
         </div>

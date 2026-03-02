@@ -9,6 +9,7 @@ export function DaemonPage() {
     host: '127.0.0.1',
     port: 8765,
     max_concurrent_jobs: 1,
+    pid_file: '',
   })
   const [dirty, setDirty] = useState(false)
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
@@ -19,6 +20,7 @@ export function DaemonPage() {
         host: config.daemon.host,
         port: config.daemon.port,
         max_concurrent_jobs: config.daemon.max_concurrent_jobs,
+        pid_file: config.daemon.pid_file ?? '',
       })
       setDirty(false)
     }
@@ -31,8 +33,9 @@ export function DaemonPage() {
   }
 
   const handleSave = () => {
+    const payload = { ...form, pid_file: form.pid_file.trim() || null }
     updateConfig.mutate(
-      { daemon: form },
+      { daemon: payload },
       {
         onSuccess: (data) => {
           setDirty(false)
@@ -52,6 +55,7 @@ export function DaemonPage() {
         host: config.daemon.host,
         port: config.daemon.port,
         max_concurrent_jobs: config.daemon.max_concurrent_jobs,
+        pid_file: config.daemon.pid_file ?? '',
       })
       setDirty(false)
       setMessage(null)
@@ -144,6 +148,21 @@ export function DaemonPage() {
               className="w-32 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 text-sm"
             />
             <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">Maximum number of encoding jobs that can run simultaneously.</p>
+          </div>
+        </div>
+
+        <div className="p-4 bg-white dark:bg-gray-800 rounded-lg shadow">
+          <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-4">Advanced</h2>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">PID File <span className="font-normal text-gray-400">(optional)</span></label>
+            <input
+              type="text"
+              value={form.pid_file}
+              onChange={e => handleChange('pid_file', e.target.value)}
+              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 text-sm"
+              placeholder="Leave empty to disable"
+            />
+            <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">Path where the daemon writes its process ID. Useful for daemon management scripts.</p>
           </div>
         </div>
       </div>

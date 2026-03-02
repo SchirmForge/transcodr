@@ -670,3 +670,4 @@ class ConfigUpdateRequest(BaseModel):
     storage: Optional[dict] = None
     logging: Optional[dict] = None
     validation: Optional[dict] = None
+    notifications: Optional[dict] = None

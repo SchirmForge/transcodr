@@ -11,11 +11,8 @@ cd docker
 mkdir -p config
 # Copy and edit config.yaml as needed (or let the daemon create defaults on first run)
 
-# Update media path in docker-compose.yml
-# Change /path/to/media to your actual media directory
-
-# Build and start
-docker compose up -d
+# Build and start (interactive configuration)
+./deploy.sh
 ```
 
 The Web UI is available at http://localhost:8765
@@ -25,7 +22,7 @@ The Web UI is available at http://localhost:8765
 | Mount | Container Path | Description |
 |-------|---------------|-------------|
 | Config | `/config` | Configuration files, profiles, watchfolders, jobs.db |
-| Media | `/media` | Root media directory (set as `root_media` in config.yaml) |
+| Media | `/media` (default) | Root media directory (set as `root_media` in config.yaml) |
 | Temp | `/temp` | Temporary encoding directory (set as `temp_dir` in config.yaml) |
 
 ## Configuration
@@ -44,9 +41,15 @@ Edit `config/config.yaml` to set your paths:
 
 ```yaml
 storage:
-  root_media: /media       # Matches the /media volume mount
+  root_media: /media       # Matches the media volume mount in docker-compose.yml
   temp_dir: /temp          # Matches the /temp volume mount
 ```
+
+If you use `./deploy.sh`, it will prompt for:
+- Root media host path (e.g., `/home/guapo/Videos`)
+- Root media container path (default `/media`)
+
+It also updates `config.yaml` so `storage.root_media` matches the container path.
 
 ## GPU Passthrough
 

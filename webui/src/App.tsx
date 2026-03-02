@@ -12,6 +12,7 @@ import { StoragePage } from './pages/settings/StoragePage'
 import { EncodingPage } from './pages/settings/EncodingPage'
 import { DaemonPage } from './pages/settings/DaemonPage'
 import { LoggingPage } from './pages/settings/LoggingPage'
+import { NotificationsPage } from './pages/settings/NotificationsPage'
 import { StatusPage } from './pages/system/StatusPage'
 
 const queryClient = new QueryClient({
@@ -44,6 +45,7 @@ function App() {
             <Route path="/settings/encoding" element={<EncodingPage />} />
             <Route path="/settings/daemon" element={<DaemonPage />} />
             <Route path="/settings/logging" element={<LoggingPage />} />
+            <Route path="/settings/notifications" element={<NotificationsPage />} />
             <Route path="/system/status" element={<StatusPage />} />
           </Route>
         </Routes>
