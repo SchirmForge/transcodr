@@ -147,7 +147,7 @@ priority: 5
 | `destination` | path | null | Output directory (required unless use_profile_destination is true) |
 | `use_profile_destination` | bool | `false` | Use each profile's destination field instead of a single folder |
 | `temp_folder` | path | null | Temp folder for source copy during encoding |
-| `disable_temp_copy` | bool | `false` | If true, encode directly from source without copying |
+| `disable_temp_copy` | bool | `false` | If true, encode directly from source without copying (overrides global `storage.enable_temp_copy`) |
 | `keep_processed_files` | bool | `true` | Keep source (rename to .processed) or delete after encoding |
 | `preserve_folder_structure` | bool | `true` | Maintain folder hierarchy from source to destination |
 | `hardware_accel` | string | null | Override hardware acceleration |
@@ -319,7 +319,7 @@ temp_folder: /fast-ssd/encode-temp
 
 #### disable_temp_copy
 
-When `true`, encodes directly from the source file without copying:
+When `true`, encodes directly from the source file without copying. This overrides the global `storage.enable_temp_copy` setting for this watchfolder:
 
 ```yaml
 disable_temp_copy: true
@@ -328,6 +328,8 @@ disable_temp_copy: true
 - **Pros**: Faster startup (no copy phase), uses less disk space
 - **Cons**: Source must not change during encoding; slow source storage impacts encode speed
 - Recommended only when source is on reliable, fast storage
+
+> **Note:** The global `storage.enable_temp_copy` setting in `config.yaml` controls the default behavior for all jobs. Set it to `true` if you run replace-mode multi-profile jobs (required). Use `disable_temp_copy` per watchfolder to override that global default.
 
 ### Important Notes
 

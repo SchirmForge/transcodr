@@ -4,6 +4,72 @@ All notable changes to Transcodr are documented in this file.
 
 ---
 
+## v0.4.3
+
+### Notifications
+- New notification system with three channel types:
+  - **Desktop** — sends system notifications via `notify-send` (libnotify); no extra dependencies if installed
+  - **Email** — sends via SMTP using stdlib `smtplib`; supports `TRANSCODR_SMTP_PASSWORD` environment variable for credential safety
+  - **Apprise** — supports ntfy, Gotify, Pushover, Telegram, and 80+ other services via URL config (requires optional `apprise` package)
+- Four configurable event triggers: `on_job_complete`, `on_batch_complete`, `on_queue_empty`, `on_error`
+- `on_batch_complete` fires after ALL jobs from a single submission finish (not after each individual job)
+- `on_queue_empty` fires once when the queue drains completely, not on every completion
+- Full configuration in `config.yaml` under the `notifications:` section
+
+### DB Schema Versioning
+- New `db_meta` table stores the app version that last wrote the database
+- Daemon checks stored version against `DB_COMPATIBLE_VERSIONS` on startup; exits with a clear error on mismatch instead of running with a stale schema
+- Existing databases without version info are migrated silently (adds `batch_id` column)
+- `src/version.py` centralizes `APP_VERSION` and `DB_COMPATIBLE_VERSIONS`
+
+### Per-Submission Batch Tracking
+- `batch_id` UUID column added to the jobs table; all jobs from one `submit()` call share the same batch ID
+- Enables accurate batch-complete detection without ambiguity across concurrent submissions
+
+---
+
+## v0.4.2
+
+### Global Temp Copy Control
+- New `storage.enable_temp_copy` config option (default: `false`) — global switch for copying source files to temp before encoding
+- Runner enforces: replace-mode multi-profile jobs require `enable_temp_copy: true` to prevent source corruption across profiles
+- Watchfolder-level `disable_temp_copy` remains for per-folder overrides
+
+### Built-in Profiles
+- New `base_profile: true` YAML field marks profiles as base/template profiles (shown with a **base** badge in the Web UI; not intended for direct use)
+- Built-in profiles are no longer auto-installed on first run; they are bundled with the daemon and available for selective import
+
+### Web UI — Profile Import
+- **Import built-in profiles** button on the Profiles page opens a modal to select and install individual built-in profiles into your config directory
+- Already-installed profiles shown pre-checked and disabled with an "installed" badge
+- **base** badge on profile cards for template profiles
+
+### API
+- `GET /api/profiles/builtins/list` — list available built-in profiles with install status
+- `POST /api/profiles/import-builtins` — import selected profiles by name (optional `?overwrite=true`)
+
+---
+
+## v0.4.1
+
+### Subtitles Management
+- Auto-detect external subtitle files alongside source videos (`.srt`, `.ass`, `.ssa`, `.sub`, `.idx`, `.vtt`)
+- Language detection from subtitle filename patterns (`.en.srt`, `.english.srt`, etc.)
+- `auto_embed_subtitles` profile option (default: `true`) — embed detected external subtitles as streams in the output
+- Subtitle streams are never burned in; always kept as separate passthrough streams
+- Copy/move non-video sidecar files (`.nfo`, `.jpg`, `.txt`, etc.) when preserving folder structure
+
+---
+
+## v0.4.0
+
+### ETA Display
+- Encoding jobs now display estimated time of completion (ETA) alongside progress percentage and FPS
+- ETA is calculated from the current encoding rate and remaining frames
+- Displayed in the Web UI active-job cards and job detail view
+
+---
+
 ## v0.3.7
 
 ### Invalid Watchfolders & Profiles

@@ -6,7 +6,7 @@
 
 Transcodr is a local‑first video transcoding platform for creators and small studios. It runs a reliable daemon with a REST API and a fast Web UI, so you can batch encode, automate with watchfolders, and keep full control of your media.
 
-Current documented release: **v0.3.6**.
+Current documented release: **v0.4.3**.
 
 ## Why Transcodr
 
@@ -24,16 +24,19 @@ Current documented release: **v0.3.6**.
 - Watchfolders for automated ingest
 - Safe replace or destination outputs
 - SQLite‑backed queue that survives restarts
-- Config editing via API and Web UI (Storage, Encoding, Daemon, Logging)
+- Config editing via API and Web UI (Storage, Encoding, Daemon, Logging, Notifications)
 - Live configuration reload (`POST /api/reload`) from UI and API
+- Notifications: Desktop, Email, and Apprise (ntfy, Gotify, Pushover, and more)
 - Multi‑daemon orchestration (planned, not yet implemented)
 
-## What’s New Through v0.3.6
+## What’s New Through v0.4.3
 
-- Docker deployment support with helper script: `./docker/deploy.sh`
-- Config directory override via `TRANSCODR_CONFIG_DIR` for Docker/self-hosted layouts
-- Extension mismatch policy for replace mode (`rename`, `reject`, `keep`) with warning tracking
-- Warning job status in history and API (`warning_message`, filter, clear-warning endpoint)
+- **Notifications** — Desktop (`notify-send`), Email (SMTP), and Apprise (ntfy, Gotify, Pushover, and 80+ services); configurable per event type (job complete, batch complete, queue empty, error)
+- **DB schema versioning** — app version stored in `db_meta`; daemon exits cleanly on incompatible DB instead of silently misbehaving
+- **Built-in profile import** — import individual built-in profiles from the Web UI Profiles page
+- **`enable_temp_copy` global option** — control temp-copy behavior in `config.yaml`; enforced for replace-mode multi-profile jobs
+- **Subtitles management** — auto-detect and embed external subtitle files; language detection from filename
+- **ETA display** — estimated time of completion shown in job cards during active encoding
 
 ## Get Started
 

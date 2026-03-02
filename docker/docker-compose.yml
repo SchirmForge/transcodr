@@ -6,13 +6,13 @@ services:
       context: ..
       dockerfile: docker/Dockerfile
     ports:
-      - "8765:8765"
-    user: "1000:1000"      
+      - "${TRANSCODR_PORT:-8765}:8765"
+    user: "${TRANSCODR_USER:-1000:1000}"
     volumes:
-      - ~/.config/transcodr:/config    # Config, profiles, watchfolders, jobs.db
-      - ~/Videos/transcodr:/media      # root_media mount 
-      - /tmp/transcodr:/temp           # Temp encoding directory
-      - /tmp/logs:/logs                # Logs folder (you need to set logging.dir to /logs in config.yaml or using the web UI)
+      - ${TRANSCODR_CONFIG_VOL}:/config    # Config, profiles, watchfolders, jobs.db
+      - ${TRANSCODR_MEDIA_VOL}:/media      # root_media mount
+      - ${TRANSCODR_TEMP_VOL}:/temp        # Temp encoding directory
+      - ${TRANSCODR_LOGS_VOL}:/logs        # Logs folder (set logging.dir to /logs in config.yaml)
 
     environment:
       - TRANSCODR_CONFIG_DIR=/config

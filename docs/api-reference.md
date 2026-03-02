@@ -14,7 +14,7 @@ No authentication is currently required. The API binds to localhost by default f
 http://localhost:8765/api
 ```
 
-Examples below reflect `v0.3.6`.
+Examples below reflect `v0.4.3`.
 
 ---
 
@@ -28,7 +28,7 @@ Get daemon status and queue information.
 ```json
 {
   "running": true,
-  "version": "0.3.6",
+  "version": "0.4.3",
   "uptime_seconds": 3600.5,
   "queue": {
     "total_jobs": 15,
@@ -383,6 +383,60 @@ DELETE /api/profiles/my-custom?confirm=true
   "detail": "Cannot delete built-in profiles"
 }
 ```
+
+### GET /api/profiles/builtins/list
+
+List all built-in profiles bundled with the daemon, including their install status.
+
+**Response:**
+```json
+{
+  "builtins": [
+    {
+      "name": "base-x265",
+      "description": "Base template for x265 profiles",
+      "tags": ["base", "x265"],
+      "already_installed": false
+    },
+    {
+      "name": "x265-balanced",
+      "description": "Balanced x265 encoding",
+      "tags": ["balanced", "recommended"],
+      "already_installed": true
+    }
+  ],
+  "total": 4
+}
+```
+
+### POST /api/profiles/import-builtins
+
+Import selected built-in profiles into the user config directory.
+
+**Query Parameters:**
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `overwrite` | bool | `false` | Overwrite existing user profiles with the same name |
+
+**Request Body:**
+```json
+{
+  "names": ["x265-balanced", "x265-quality"]
+}
+```
+
+**Response:**
+```json
+{
+  "imported": ["x265-quality"],
+  "skipped": ["x265-balanced"],
+  "message": "Imported 1 profile(s), skipped 1 already installed (use overwrite=true to replace)"
+}
+```
+
+**Notes:**
+- Profiles already present in the user directory are skipped unless `overwrite=true`
+- Triggers a profile cache reload so newly imported profiles are immediately available
 
 ---
 

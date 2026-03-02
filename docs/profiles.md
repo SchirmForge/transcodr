@@ -6,19 +6,40 @@ Profiles define encoding settings for different use cases.
 
 Video Transcode includes these built-in profiles:
 
-1. **base-x265.yaml** - Base template for x265 profiles
-2. **x265-fast.yaml** - Fast encoding, larger file sizes
-3. **x265-balanced.yaml** - Balanced speed/quality (recommended)
-4. **x265-quality.yaml** - High quality, slower encoding
+| Profile | CRF | Preset | Description |
+|---------|-----|--------|-------------|
+| `base-x265` | - | - | Base template (marked `base_profile: true`; not for direct use) |
+| `x265-fast` | 25 | fast | Quick conversions, testing |
+| `x265-balanced` | 23 | medium | Most use cases (recommended) |
+| `x265-quality` | 20 | slow | Archival, important content |
+
+All built-in profiles use x265/HEVC with VAAPI hardware variants and 10-bit color (`yuv420p10le`).
+
+### Installing Built-in Profiles
+
+Built-in profiles are bundled with the daemon and available without installation. You can install them into your user config directory if you want to customize them.
+
+**Via Web UI:** Open the **Profiles** page, scroll to **Built-in Profiles**, and click **Import built-in profiles**. Select the profiles you want to install and click **Import**. Already-installed profiles are shown pre-checked and disabled.
+
+**Via CLI:**
+```bash
+python -c "
+from src.config.manager import ConfigManager
+ConfigManager.copy_builtin_profiles(overwrite=False)
+print('Built-in profiles installed')
+"
+```
+
+Use `overwrite=True` to overwrite existing user copies with the bundled versions.
 
 ## Profile Location
 
 Profiles are loaded from these locations (in order of priority):
 
 1. **User profiles**: `~/.config/transcodr/profiles/`
-2. **Built-in profiles**: `src/profiles/builtin/` (in source repo)
+2. **Built-in profiles**: Bundled with the daemon (available without installation)
 
-User profiles override built-in profiles with the same name.
+User profiles with the same name override built-in profiles.
 
 ## Creating Custom Profiles
 
@@ -89,6 +110,7 @@ Profiles are defined in YAML with the following structure:
 | `name` | string | Yes | - | Unique profile identifier |
 | `description` | string | No | null | Human-readable description |
 | `extends` | string | No | null | Parent profile to inherit from |
+| `base_profile` | bool | No | `false` | Marks profile as a base/template (shown with **base** badge in UI; not intended for direct use) |
 | `container` | string | No | `mkv` | Output format: `mkv`, `mp4`, `webm`, `avi` |
 | `video` | object | Yes | - | Video encoding settings |
 | `audio` | object | No | copy | Audio encoding settings |
@@ -534,22 +556,18 @@ tags:
 
 ---
 
-## Built-in Profiles
+## Built-in Profiles Reference
 
-Video Transcode includes these built-in profiles:
+All built-in profiles use x265/HEVC codec, include VAAPI hardware variants, use 10-bit color depth (`yuv420p10le`), and copy audio/subtitle streams without re-encoding.
 
 | Profile | CRF | Preset | Use Case |
 |---------|-----|--------|----------|
-| `base-x265` | - | - | Base template (not for direct use) |
+| `base-x265` | - | - | Base template (`base_profile: true`; not for direct use) |
 | `x265-fast` | 25 | fast | Quick conversions, testing |
 | `x265-balanced` | 23 | medium | Most use cases (recommended) |
 | `x265-quality` | 20 | slow | Archival, important content |
 
-All built-in profiles:
-- Use x265/HEVC codec
-- Include VAAPI hardware variants
-- Use 10-bit color depth (`yuv420p10le`)
-- Copy audio and subtitle streams without re-encoding
+See [Installing Built-in Profiles](#installing-built-in-profiles) above for how to install or customize them.
 
 ## Benchmark and Save Optimal Concurrency
 

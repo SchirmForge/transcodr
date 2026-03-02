@@ -1,6 +1,6 @@
 # transcodr Roadmap
 
-## Current Version: 0.3.6
+## Current Version: 0.4.3
 
 ## Use Cases Overview
 
@@ -14,7 +14,7 @@
 | 6 | Hardware acceleration | ✅ Done | VAAPI auto-detection and selection |
 | 7 | Parallel encoding | ✅ Done | Configurable max_concurrent_jobs |
 | 8 | Folder drop processing | ✅ Done | Drop folders with nested subdirectories |
-| 9 | Notifications | ❌ Pending | Email, Webhook, Desktop, Pushover, Gotify, ntfy |
+| 9 | Notifications | ✅ Done | Desktop, Email, Apprise (ntfy/Gotify/Pushover) |
 | 10 | Video filters | ❌ Pending | Scale, crop, deinterlace, denoise, watermark |
 | 11 | Distributed encoding | ❌ Pending | Controller/worker architecture |
 
@@ -247,25 +247,97 @@
 
 ---
 
+## Completed Features (v0.3.7)
+
+### Invalid Watchfolders & Profiles
+- [x] Invalid watchfolders (missing location, unknown profile, missing destination) tracked and shown as **Invalid** badge in Web UI
+- [x] Multiple validation errors per watchfolder each shown on their own line (expanded view)
+- [x] Profile destination path validation (non-existent destination shows as Invalid)
+
+### Web UI — Profiles & Watchfolders Detail
+- [x] Profile cards show description, codec, container always visible
+- [x] Watchfolder cards show full path, assigned profiles, output destination always visible
+- [x] Media/command type badge on watchfolder cards
+- [x] Error details, scan interval, patterns, runtime stats moved to expanded view
+- [x] **See yaml…** button in expanded view opens read-only YAML modal
+
+### API
+- [x] `GET /api/profiles/{name}/yaml` — raw YAML source of a profile file
+- [x] `GET /api/watchfolders/{folder_id}/yaml` — raw YAML source of a watchfolder config file
+
+---
+
+## Completed Features (v0.4.0)
+
+### ETA Display
+- [x] Estimated time of completion (ETA) shown in active job cards alongside progress and FPS
+- [x] ETA calculated from current encoding rate and remaining frames
+
+---
+
+## Completed Features (v0.4.1)
+
+### Subtitles Management
+- [x] Auto-detect external subtitle files alongside source videos (`.srt`, `.ass`, `.ssa`, `.sub`, `.idx`, `.vtt`)
+- [x] Language detection from subtitle filename patterns (`.en.srt`, `.english.srt`, etc.)
+- [x] `auto_embed_subtitles` profile option (default: `true`) — embed detected external subtitles as streams
+- [x] Subtitle streams never burned in; always kept as separate passthrough streams
+- [x] Copy/move non-video sidecar files (`.nfo`, `.jpg`, `.txt`, etc.) when preserving folder structure
+
+---
+
+## Completed Features (v0.4.2)
+
+### Global Temp Copy Control
+- [x] `storage.enable_temp_copy` config option (default: `false`) — global default for temp copy behavior
+- [x] Runner enforces: replace-mode multi-profile jobs require `enable_temp_copy: true`
+- [x] Watchfolder-level `disable_temp_copy` remains for per-folder override
+
+### Built-in Profile Import
+- [x] `base_profile: true` YAML field marks profiles as base/template (not for direct use)
+- [x] Built-in profiles no longer auto-installed; available for selective import
+- [x] `GET /api/profiles/builtins/list` — list available built-in profiles with install status
+- [x] `POST /api/profiles/import-builtins` — import selected profiles (optional `?overwrite=true`)
+
+### Web UI — Profile Import
+- [x] **Import built-in profiles** button on Profiles page
+- [x] Checkbox modal with install-status indicators and success/error feedback
+- [x] **base** badge on profile cards for template profiles
+
+---
+
+## Completed Features (v0.4.3)
+
+### Notifications
+- [x] Three notification channels: Desktop (`notify-send`), Email (SMTP), Apprise
+- [x] Apprise covers ntfy, Gotify, Pushover, Telegram, and 80+ services via URL config
+- [x] Four event triggers: `on_job_complete`, `on_batch_complete`, `on_queue_empty`, `on_error`
+- [x] `on_batch_complete` fires after ALL jobs from one submission finish
+- [x] `on_queue_empty` fires once when queue drains (False→True transition)
+
+### DB Schema Versioning
+- [x] `db_meta` table stores app version that last wrote the database
+- [x] Daemon checks on startup; exits cleanly with error on version mismatch
+- [x] Silent migration for pre-v0.4.3 databases (adds `batch_id` column)
+- [x] `src/version.py` centralizes `APP_VERSION` and `DB_COMPATIBLE_VERSIONS`
+
+### Per-Submission Batch Tracking
+- [x] `batch_id` UUID column in jobs table — all jobs from one submission share a batch ID
+- [x] Accurate batch-complete detection across concurrent submissions
+
+---
+
 ## Planned Features
 
-### Version 0.4: Subtitles Management
-- [ ] Subtitles are never burned in (always separate streams)
-- [ ] Auto-detect external subtitle files (`.srt`, `.ass`, `.ssa`, `.sub`, `.idx`, `.vtt`)
-- [ ] Language detection from filename (`.en.srt`, `.english.srt`, etc.)
-- [ ] `auto_embed_subtitles` option (default: true)
-- [ ] Copy/move other non-video files when preserving structure (nfo/jpg/txt/etc.)
+### Version 0.4 (remaining): Profile/Watchfolder Editor UI
+- [ ] Create and edit profiles directly in the Web UI (YAML editor or form)
+- [ ] Create and edit watchfolder configs directly in the Web UI
 
-### Version 0.4: Notifications
-- [ ] Event types: job complete, batch complete, queue empty, error alerts
-- [ ] Channels: Email, Webhook, Desktop, Pushover, Gotify, ntfy
-- [ ] Configurable notification payloads and per-channel settings
-
-### Version 0.4: Audio File Encoding
+### Future: Audio File Encoding
 - [ ] Lossless audio formats: FLAC, WAV, ALAC, APE, WavPack, DSD
 - [ ] Audio-specific encoding profiles
 
-### Version 0.4: Video Analysis Profiles
+### Future: Video Analysis Profiles
 - [ ] New `analysis` profile type with deterministic + perceptual phases
 - [ ] Technical heuristics (bpp, bitrate/resolution mismatch, re-encode signals)
 - [ ] Perceptual artifact scoring (blocking, banding, blur, ringing, temporal)
@@ -297,7 +369,7 @@
 - Validate file duration for extract profiles; only create jobs that fit - fixed
 - When the runner throws an exception, mark file as `.failed` (not `.processing`) - fixed
 - Catch and log runner exceptions consistently - in progress
-- Disallow replace + disable_temp combo for multi-profile runs; enforce in runner - fixed - to be enforced also on manual creation webUI
+- Disallow replace + disable_temp combo for multi-profile runs; enforce in runner - fixed (enforced via `enable_temp_copy` guard in v0.4.2)
 - Client job names should not include `.processing` - fixed
 - Avoid 60s fixed timeout when waiting for temp copy state - fixed - use ioctl now, this timeout method is still used as fallback method for network share
 - Add input/output FFmpeg args to fix `.mts` stream-copy artifacts
@@ -306,79 +378,31 @@
 
 ## Version History
 
-### v0.4 (Planned)
-- Video analysis profiles (0.4.1)
-- Distributed encoding (0.4.2)
-- Video filters (0.4.3)
+### v0.4 (Current — v0.4.3 Released)
+- ✅ ETA display in job cards (0.4.0) - **DONE**
+- ✅ Subtitles management — external subtitle auto-detect and embed (0.4.1) - **DONE**
+- ✅ Built-in profile import UI + `enable_temp_copy` global option (0.4.2) - **DONE**
+- ✅ Notifications (Desktop, Email, Apprise) + DB schema versioning (0.4.3) - **DONE**
+- Profile/Watchfolder editor UI (pending)
 
-### v0.3 (Current - v0.3.6 Released)
+### v0.3 (v0.3.7 Released)
 - ✅ Web UI basic layout (0.3.1) - **DONE**
 - ✅ Bug fixes (0.3.2) - **DONE**
 - ✅ Manual encoding with web UI (0.3.3) - **DONE**
 - ✅ Extension mismatch handling + warning status (0.3.4) - **DONE**
 - ✅ Docker preparation + settings UI (0.3.5) - **DONE**
 - ✅ Config/runtime polish + reload UX improvements (0.3.6) - **DONE**
+- ✅ Invalid WF/Profile tracking + detail improvements + YAML modal (0.3.7) - **DONE**
 
 ### v0.2 (v0.2.3 Released)
 - ✅ Watch folder improvements (0.2.1) - **DONE**
 - ✅ Extract profiles and stream mapping (0.2.2) - **DONE**
 - ✅ Profile/job parameters (0.2.3) - **DONE**
-- Subtitles management (0.2.4)
-- Notifications (0.2.5)
-- Audio file encoding (0.2.6)
-
-### v0.3.6 (Current)
-- Default config generated from `src/config/default-config.yml`
-- Profiles/watchfolders now consistently use `TRANSCODR_CONFIG_DIR`
-- Logging reconfigured after config load so `logging.dir` is applied
-- Settings > General includes Reload Configuration (`POST /api/reload`)
-- Profiles/Watchfolders pages include manual Refresh actions
-- Docker helper script: `docker/deploy.sh`
-
-### v0.3.5
-- Docker support: Dockerfile, docker-compose.yml, GPU passthrough
-- `TRANSCODR_CONFIG_DIR` environment variable for config directory override
-- Settings API: `GET /api/config`, `PUT /api/config`
-- Settings Web UI: Storage, Encoding, Daemon, Logging pages
-
-### v0.3.4
-- Extension mismatch handling for replace mode (`on_extension_mismatch` config)
-- Warning job status with `warning_message` field
-- Web UI: amber warning display, dynamic version, file browser refresh button
-- `DELETE /api/queue/warning` endpoint
-
-### v0.3.3
-- Create Job page with file browser, profile selector, and multi-step form
-- File browser API endpoint (`GET /api/browse`)
-- `use_temp_folder` and `copy_source_to_temp` options for encoding jobs
-- Fixed disk space estimation formula
-- Improved error handling for validation errors
-- All API endpoints under `/api` prefix
-
-### v0.2.3
-- Profile-level `destination:` with path placeholder support
-- `use_profile_destination: true` for commands/watchfolders
-- Per-source `max_concurrent_jobs` concurrency limits
-- Configurable `profile_name_separator` in config
-
-### v0.2.2
-- Stream copy + extract profiles
-- Audio/subtitle stream mapping (include all)
-- Container handling fix for temp outputs
-- Watchfolder ref-count finalization
-- Profile cache reload + SQLite autocommit fix
-
-### v0.2.1
-- `$root_media` placeholder and environment variable expansion
-- Folder drop processing with nested subdirectory support
-- Folder structure preservation for dropped folders
-- FolderProcessor with stability detection and completion tracking
-- Dedicated `src/watcher/` module architecture
 
 ### v0.1
-- Core encoding pipeline with multi-profile support
-- Daemon with REST API and SQLite persistence
-- Command and media watch folders
-- Full CLI client
-- VAAPI hardware acceleration
-- Output organization options
+- ✅ Core encoding pipeline with multi-profile support
+- ✅ Daemon with REST API and SQLite persistence
+- ✅ Command and media watch folders
+- ✅ Full CLI client
+- ✅ VAAPI hardware acceleration
+- ✅ Output organization options

@@ -73,7 +73,7 @@ ls -la ~/.config/transcodr/profiles/
 ## Configuration File
 
 The main configuration file is `~/.config/transcodr/config.yaml`.
-As of `v0.3.6`, the generated default file comes from `src/config/default-config.yml`.
+The generated default file comes from `config/config.yaml` in the repository root.
 
 ### Default Configuration
 
@@ -161,6 +161,9 @@ logging:
 - **profile_name_separator**: Separator used when `append_profile_name: true`
   - Default: `_`
   - Example: `movie_x265-fast.mkv` vs `movie-x265-fast.mkv`
+- **enable_temp_copy**: Copy source file to temp before encoding (default: `false`)
+  - Required for replace-mode multi-profile jobs (daemon enforces this at job creation)
+  - Set to `true` if you run multi-profile replace-mode jobs; leave `false` for destination-mode or single-profile jobs
 
 #### Logging Settings
 
@@ -177,6 +180,96 @@ logging:
   - `daily` - Rotate logs daily
   - `size:10MB` - Rotate at 10MB (future feature)
 - **per_job_logs**: Create separate log file per encoding job
+
+## Notifications
+
+Transcodr can send notifications when jobs complete, batches finish, the queue becomes idle, or errors occur. Three channel types are supported.
+
+### Enabling Notifications
+
+```yaml
+notifications:
+  enabled: true            # Master switch
+
+  on_job_complete: false   # Notify after every individual job
+  on_batch_complete: true  # Notify when all jobs from one submission finish
+  on_queue_empty: true     # Notify when the queue becomes idle
+  on_error: true           # Notify on critical errors
+
+  desktop:
+    enabled: false         # Requires notify-send (libnotify)
+
+  email:
+    enabled: false
+    smtp_server: smtp.gmail.com
+    smtp_port: 587
+    use_tls: true
+    smtp_user: ""
+    smtp_password: ""      # Or set TRANSCODR_SMTP_PASSWORD environment variable
+    from_address: transcodr@example.com
+    recipients: []
+
+  apprise:
+    enabled: false
+    urls: []
+    # Examples:
+    # - ntfy://ntfy.sh/my-topic
+    # - gotifys://gotify.server.com/apptoken
+    # - pover://UserKey@AppToken
+```
+
+### Notification Channels
+
+#### Desktop (`notifications.desktop`)
+
+Sends desktop notifications via `notify-send` (part of the `libnotify` package). Works on any Linux desktop with a notification daemon.
+
+- **enabled**: Enable desktop notifications (default: `false`)
+- Install: `sudo apt install libnotify-bin` (Debian/Ubuntu) or equivalent
+
+#### Email (`notifications.email`)
+
+Sends email via SMTP using the Python standard library. No additional packages required.
+
+- **enabled**: Enable email notifications (default: `false`)
+- **smtp_server**: SMTP server hostname (default: `smtp.gmail.com`)
+- **smtp_port**: SMTP port (default: `587`)
+- **use_tls**: Use STARTTLS (default: `true`)
+- **smtp_user**: SMTP username
+- **smtp_password**: SMTP password — prefer `TRANSCODR_SMTP_PASSWORD` env var to avoid storing credentials in config
+- **from_address**: Sender address
+- **recipients**: List of recipient addresses
+
+#### Apprise (`notifications.apprise`)
+
+Sends notifications via the [Apprise](https://github.com/caronc/apprise) library, which supports 80+ services including ntfy, Gotify, Pushover, Telegram, Slack, and more.
+
+- **enabled**: Enable Apprise notifications (default: `false`)
+- **urls**: List of Apprise-format URLs for notification services
+
+Requires the optional `apprise` package:
+```bash
+pip install apprise
+```
+
+Example URLs:
+| Service | URL format |
+|---------|-----------|
+| ntfy | `ntfy://ntfy.sh/my-topic` |
+| Gotify | `gotifys://gotify.server.com/apptoken` |
+| Pushover | `pover://UserKey@AppToken` |
+| Telegram | `tgram://BotToken/ChatID` |
+
+### Event Types
+
+| Event | Config key | Description |
+|-------|-----------|-------------|
+| Job complete | `on_job_complete` | Fires after each individual job (can be noisy) |
+| Batch complete | `on_batch_complete` | Fires after all jobs from one submission finish |
+| Queue empty | `on_queue_empty` | Fires once when the queue drains completely |
+| Error | `on_error` | Fires on critical daemon errors |
+
+---
 
 ## Watch Folders
 
@@ -290,10 +383,10 @@ Since `v0.3.6`, profile and watchfolder loading also follows this directory cons
 
 ## Settings Web UI
 
-Starting with v0.3.5, all configuration sections can be edited directly from the Web UI under **Settings**:
+All configuration sections can be edited directly from the Web UI under **Settings**:
 
 - **General** — reload configuration/watchfolders without daemon restart
-- **Storage** — root media, temp directory, backup options, free space, extension mismatch policy, profile name separator
+- **Storage** — root media, temp directory, backup options, free space, extension mismatch policy, profile name separator, enable temp copy
 - **Encoding** — FFmpeg binary path, hardware acceleration selector, duration tolerance, detected hardware display
 - **Daemon** — host, port, max concurrent jobs (changes require daemon restart)
 - **Logging** — log level, log directory, rotation policy, per-job logs toggle
